@@ -1,6 +1,17 @@
-# Lambda Proxy
-The Lambda Proxy is a simple proxy server that accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda
-by invoking the Lambda function directly with API Gateway v2 compatible payload.
+# OwnStack Proxy
+The OwnStack Proxy is a simple proxy server that works as API Gateway replacement for OwnStack with more features and higher limits. 
+It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invoking the Lambda function directly with API Gateway v2 compatible payload.
+
+## Supported features
+- [x] AWS Lambda
+    - [x] Invocation in BUFFERED mode
+    - [ ] Invocation in STREAMING mode
+    - [x] Basic error handling for Lambda functions
+- [x] Following redirects to another hosts (S3, etc...)
+- [ ] Response streaming
+- [ ] Caching
+- [ ] Basic logging
+- [ ] Basic metrics
 
 ## Requirements
 - GoLang 1.22+
@@ -11,7 +22,7 @@ by invoking the Lambda function directly with API Gateway v2 compatible payload.
 git clone https://github.com/ownstack-org/ownstack-proxy.git
 ```
 
-2. Install Go from repository
+2. Install Go from package repository
 ```bash
 # macOS
 brew install go
