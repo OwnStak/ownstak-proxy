@@ -1,0 +1,15 @@
+# Ouput directory
+dist/
+
+# Certs
+certs/
+
+# Air temp directory
+tmp/
+
+# IDE
+.idea/
+.vscode/
+
+# .ENV local file
+.env.local
