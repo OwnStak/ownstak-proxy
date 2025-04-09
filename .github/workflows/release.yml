@@ -94,8 +94,6 @@ jobs:
           git config --global --add safe.directory $(pwd)
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          git checkout main
-          git pull --no-rebase
           git add .env
           git commit -m "Bump version" || echo "Nothing to commit"
-          git push || echo "Nothing to push"
+          git push origin HEAD:main || echo "Nothing to push"
