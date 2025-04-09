@@ -1,7 +1,7 @@
 package middlewares
 
 import (
-	"ownstack-proxy/src/server"
+	"ownstak-proxy/src/server"
 
 	"github.com/google/uuid"
 )

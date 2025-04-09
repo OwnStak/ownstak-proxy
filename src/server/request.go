@@ -31,8 +31,8 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 	defer r.Body.Close()
 
 	// If the forwarded host is set, use it instead of the original host.
-	// e.g: https://site-125.aws-2-account.ownstack.link
-	// e.g: https://site-125.aws-2-account.ownstack.link,https://site-125.aws-3-account.ownstack.link
+	// e.g: https://site-125.aws-2-account.ownstak.link
+	// e.g: https://site-125.aws-2-account.ownstak.link,https://site-125.aws-3-account.ownstak.link
 	host := r.Host
 	if forwardedHost := r.Header.Get(HeaderForwardedHost); forwardedHost != "" {
 		// If there are multiple forwarded hosts, use the last one

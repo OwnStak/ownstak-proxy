@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"ownstack-proxy/src/constants"
-	"ownstack-proxy/src/logger"
-	"ownstack-proxy/src/server"
+	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
+	"ownstak-proxy/src/server"
 	"strings"
 	"time"
 
@@ -115,15 +115,15 @@ func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 // OnRequest processes the request to invoke Lambda if appropriate
 func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
 	// Parse hostname parts
-	// e.g: site-125.aws-2-account.ownstack.link
+	// e.g: site-125.aws-2-account.ownstak.link
 	// site-125 is the AWS Lambda function readable name
 	// aws-2-account is the AWS account name
-	// ownstack.link is the domain name
+	// ownstak.link is the domain name
 	hostParts := strings.Split(ctx.Request.Host, ".")
 	if len(hostParts) < 2 {
 		errorMessage := fmt.Sprintf("Invalid hostname format '%s'.\r\n", ctx.Request.Host)
 		errorMessage += "The expected format is '{lambda-name}.{aws-account-name}.{domain-name}.'\r\n"
-		errorMessage += "e.g: site-125.aws-2-account.ownstack.link\r\n"
+		errorMessage += "e.g: site-125.aws-2-account.ownstak.link\r\n"
 		ctx.Error(errorMessage, server.StatusBadRequest)
 		return
 	}
@@ -162,7 +162,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		errorMessage := fmt.Sprintf("Failed to invoke Lambda function: %v", err)
 
 		// If the Lambda function was not found, it was probably retired.
-		// In this case, we will redirect the user to the OwnStack Console with host passed as a query parameter.
+		// In this case, we will redirect the user to the OwnStak Console with host passed as a query parameter.
 		if strings.Contains(errorMessage, "ResourceNotFoundException") {
 			redirectURL := fmt.Sprintf("%s/revive?host=%s", constants.ConsoleURL, ctx.Request.Host)
 			ctx.Response.Headers.Set(server.HeaderLocation, redirectURL)
@@ -333,7 +333,7 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 		QueryStringParameters: queryParams,
 		RequestContext: EventRequestContext{
 			AccountId:    accountID,
-			ApiId:        "ownstack-proxy",
+			ApiId:        "ownstak-proxy",
 			DomainName:   req.Host,
 			DomainPrefix: "", // Default to an empty string
 			Http: HttpDetails{

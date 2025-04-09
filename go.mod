@@ -1,4 +1,4 @@
-module ownstack-proxy
+module ownstak-proxy
 
 go 1.23.0
 

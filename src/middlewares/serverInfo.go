@@ -3,9 +3,9 @@ package middlewares
 import (
 	"encoding/json"
 	"fmt"
-	"ownstack-proxy/src/constants"
-	"ownstack-proxy/src/logger"
-	"ownstack-proxy/src/server"
+	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
+	"ownstak-proxy/src/server"
 	"runtime"
 	"time"
 )

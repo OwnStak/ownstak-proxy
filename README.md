@@ -1,5 +1,5 @@
-# OwnStack Proxy
-The OwnStack Proxy is a simple proxy server that works as API Gateway replacement for OwnStack with more features and higher limits. 
+# OwnStak Proxy
+The OwnStak Proxy is a simple proxy server that works as API Gateway replacement for OwnStak with more features and higher limits. 
 It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invoking the Lambda function directly with API Gateway v2 compatible payload.
 
 ## Supported features
@@ -19,7 +19,7 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
 ## Installation
 1. Clone the repository
 ```bash
-git clone git@github.com:ownstack-org/ownstack-proxy.git
+git clone git@github.com:ownstak-org/ownstak-proxy.git
 ```
 
 2. Install Go from package repository
@@ -69,15 +69,15 @@ To release a new version, you need to create a new release in the GitHub UI.
 After the release is created, the GitHub Actions will build the app for all the target platforms, release the docker images and attach the binaries to the release.
 
 Steps to release a new version:
-1. Create a new release in the [Releases](https://github.com/ownstack-org/ownstack-proxy/releases/new) page or use existing release draft.
+1. Create a new release in the [Releases](https://github.com/ownstak-org/ownstak-proxy/releases/new) page or use existing release draft.
 2. Create a new tag with the corresponding version. The current release candidate version can be found in the `.env` file under `VERSION` variable but the release pipeline will use the version from the tag.
 3. The tag name should be in the format of `v{version}`. For example, `v1.0.1`. Then click on `Create new tag` button.
 4. Set the release title to same name as the tag.
 5. Add or update release notes if needed.
 6. Check the `Set as the latest release ` checkbox.
 7. Click on `Publish release` button.
-8. The release pipeline will start. You can see the progress in the [Actions](https://github.com/ownstack-org/ownstack-proxy/actions) page.
-9. Once the release pipeline is finished, you can see the release binaries in the [Releases](https://github.com/ownstack-org/ownstack-proxy/releases) page.
+8. The release pipeline will start. You can see the progress in the [Actions](https://github.com/ownstak-org/ownstak-proxy/actions) page.
+9. Once the release pipeline is finished, you can see the release binaries in the [Releases](https://github.com/ownstak-org/ownstak-proxy/releases) page.
 10. Done
 
 # Preview/Next release

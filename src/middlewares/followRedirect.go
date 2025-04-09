@@ -3,8 +3,8 @@ package middlewares
 import (
 	"fmt"
 	"io"
-	"ownstack-proxy/src/logger"
-	"ownstack-proxy/src/server"
+	"ownstak-proxy/src/logger"
+	"ownstak-proxy/src/server"
 	"net/http"
 	"strings"
 )

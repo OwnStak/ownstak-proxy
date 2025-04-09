@@ -20,8 +20,8 @@ import (
 	"syscall"
 	"time"
 
-	"ownstack-proxy/src/constants"
-	"ownstack-proxy/src/logger"
+	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
 
 	"github.com/google/uuid"
 	"golang.org/x/net/http2"

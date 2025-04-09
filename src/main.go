@@ -1,10 +1,10 @@
 package main
 
 import (
-	"ownstack-proxy/src/constants"
-	"ownstack-proxy/src/logger"
-	"ownstack-proxy/src/middlewares"
-	"ownstack-proxy/src/server"
+	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
+	"ownstak-proxy/src/middlewares"
+	"ownstak-proxy/src/server"
 
 	"github.com/joho/godotenv"
 )

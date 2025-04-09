@@ -13,7 +13,7 @@ fi
 
 # Assign default dist name if not set
 if [ -z "$DIST_NAME" ]; then
-    DIST_NAME="ownstack-proxy"
+    DIST_NAME="ownstak-proxy"
 fi
 
 # Clean up dist directory

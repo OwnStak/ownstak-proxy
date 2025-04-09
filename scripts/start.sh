@@ -14,7 +14,7 @@ fi
 
 # Assign default dist name if not set
 if [ -z "$DIST_NAME" ]; then
-    DIST_NAME="ownstack-proxy"
+    DIST_NAME="ownstak-proxy"
 fi
 
 BINARY_PATH="$DIST_DIR/$DIST_NAME-$CURRENT_OS-$CURRENT_ARCH"
