@@ -71,7 +71,7 @@ After the release is created, the GitHub Actions will build the app for all the 
 Steps to release a new version:
 1. Create a new release in the [Releases](https://github.com/ownstack-org/ownstack-proxy/releases/new) page or use existing release draft.
 2. Create a new tag with the corresponding version. The current release candidate version can be found in the `.env` file under `VERSION` variable but the release pipeline will use the version from the tag.
-3. The tag name should be in the format of `v{version}`. For example, `v1.0.1`. Click on `Create new tag` button.
+3. The tag name should be in the format of `v{version}`. For example, `v1.0.1`. Then click on `Create new tag` button.
 4. Set the release title to same name as the tag.
 5. Add or update release notes if needed.
 6. Check the `Set as the latest release ` checkbox.
