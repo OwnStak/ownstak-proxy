@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  GO_VERSION: 1.23.0
+  AWS_ACCESS_KEY_ID: ${{ vars.ECR_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.ECR_AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: ${{ vars.ECR_AWS_REGION }}
+  DEBIAN_FRONTEND: noninteractive
+  
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release-next:
+    name: Build and release
+    timeout-minutes: 10
+    runs-on: [self-hosted, linux, arm64]
+    container:
+      image: ubuntu:22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Install Basic Dependencies
+        run: |
+          apt-get update
+          apt-get install --no-install-recommends -y ca-certificates curl unzip git sudo apt-transport-https gnupg lsb-release
+          update-ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Install Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: 'Cache'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
+
+      - name: Display Go version
+        run: go version
+
+      - name: Build the project
+        run: ./scripts/build.sh
+
+      - name: Install Docker
+        run: |
+          curl -fsSL https://get.docker.com -o get-docker.sh
+          sudo sh get-docker.sh
+          docker --version
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          ./aws/install
+          rm -rf aws awscliv2.zip
+          aws --version
+
+      - name: Configure AWS CLI
+        run: |
+          aws configure set aws_access_key_id "${{ env.AWS_ACCESS_KEY_ID }}" --profile default
+          aws configure set aws_secret_access_key "${{ env.AWS_SECRET_ACCESS_KEY }}" --profile default
+          aws configure set aws_region "${{ env.AWS_REGION }}" --profile default
+
+      - name: Release the version
+        run: ./scripts/release.sh
+
+      - name: Bump version for the next release
+        run: ./scripts/version.sh bump
+
+      - name: Push the new version to the repository
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git add .
+          git commit -m "Bump version" || echo "Nothing to commit"
+          git push origin main || echo "Nothing to push"
