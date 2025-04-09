@@ -49,6 +49,10 @@ jobs:
       - name: Display Go version
         run: go version
 
+      - name: Set version from release tag
+        run: |
+          ./scripts/version.sh set ${GITHUB_REF_NAME#v}
+
       - name: Build the project
         run: ./scripts/build.sh
 
