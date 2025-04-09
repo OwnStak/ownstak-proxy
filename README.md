@@ -83,4 +83,4 @@ Steps to release a new version:
 # Preview/Next release
 Every commit to the opened PR will trigger a preview/next release build. 
 The release version is in the format of `{version}-next-{timestamp}-{commit}`. For example, `1.0.0-next-1744196863-97afab`. 
-You can find the actual release next version in the CI logs.
+You can find the actual released next version in the CI logs.
