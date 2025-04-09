@@ -1,0 +1,11 @@
+FROM --platform=$BUILDPLATFORM alpine:latest AS run
+
+ARG DIST_NAME
+ARG OS
+ARG ARCH
+ENV DIST_NAME=$DIST_NAME
+
+WORKDIR /
+COPY /dist/${DIST_NAME}-${OS}-${ARCH} /ownstack-proxy
+RUN chmod +x /ownstack-proxy
+ENTRYPOINT ["/ownstack-proxy"]

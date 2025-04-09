@@ -20,12 +20,11 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/net/http2"
-
+	"ownstack-proxy/src/constants"
 	"ownstack-proxy/src/logger"
 
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
+	"golang.org/x/net/http2"
 )
 
 type Server struct {
@@ -45,12 +44,6 @@ type Server struct {
 func NewServer() *Server {
 	// Generate a unique server ID
 	serverId := uuid.New().String()
-
-	// Load environment variables
-	err := godotenv.Load()
-	if err != nil {
-		logger.Warn("Error loading .env file, using default values")
-	}
 
 	// Set default values if environment variables are not set
 	host := os.Getenv("HOST")
@@ -123,8 +116,7 @@ func NewServer() *Server {
 
 // Use adds a middleware to the chain that can intercept or process the request.
 func (s *Server) Use(mw Middleware) *Server {
-	if mw == nil {
-		logger.Error("Failed to add middleware: middleware is nil")
+	if mw == nil || reflect.ValueOf(mw).IsNil() {
 		return s
 	}
 	middlewareName := reflect.TypeOf(mw).Elem().Name()
@@ -143,7 +135,7 @@ func (s *Server) Start() {
 
 	// Check if certificate file exists
 	if _, err := os.Stat(s.certFile); os.IsNotExist(err) {
-		logger.Info("Certificate file does not exist, generating self-signed certificate")
+		logger.Warn("Certificate file does not exist, generating self-signed certificate")
 		s.generateSelfSignedCert()
 	}
 
@@ -254,10 +246,10 @@ func (s *Server) generateSelfSignedCert() {
 	caTemplate := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
-			Organization: []string{"My CA"},
+			Organization: []string{fmt.Sprintf("%s CA", constants.AppName)},
 		},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // 10 years
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -281,7 +273,7 @@ func (s *Server) generateSelfSignedCert() {
 	if err := caOut.Close(); err != nil {
 		logger.Fatal(fmt.Sprintf("Error closing ca.pem: %s", err))
 	}
-	logger.Info("Written ca.pem")
+	logger.Info("Written CA Certificate to ca.pem")
 
 	// Generate a private key for the server
 	serverPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -293,10 +285,10 @@ func (s *Server) generateSelfSignedCert() {
 	serverTemplate := x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
-			Organization: []string{"My Company"},
+			Organization: []string{constants.AppName},
 		},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour), // 10 years
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -319,7 +311,7 @@ func (s *Server) generateSelfSignedCert() {
 	if err := certOut.Close(); err != nil {
 		logger.Fatal(fmt.Sprintf("Error closing cert.pem: %s", err))
 	}
-	logger.Info("Written cert.pem")
+	logger.Info("Written Server Certificate to cert.pem")
 
 	// Write the server private key to a file
 	keyOut, err := os.Create(s.keyFile)
@@ -336,7 +328,7 @@ func (s *Server) generateSelfSignedCert() {
 	if err := keyOut.Close(); err != nil {
 		logger.Fatal(fmt.Sprintf("Error closing key.pem: %s", err))
 	}
-	logger.Info("Written key.pem")
+	logger.Info("Written Server Private Key to key.pem")
 }
 
 func (s *Server) loadCertificate() tls.Certificate {

@@ -5,11 +5,13 @@ const (
 	StatusOK                  = 200
 	StatusBadRequest          = 400
 	StatusInternalServerError = 500
+	StatusPermanentRedirect   = 301
+	StatusTemporaryRedirect   = 302
 
 	// Custom status codes
 	StatusInternalError          = 530
-	StatusLambdaProjectError     = 531
-	StatusLambdaNotFound         = 534
+	StatusAccountNotFound        = 531
+	StatusLambdaProjectError     = 534
 	StatusLambdaRequestInvalid   = 535
 	StatusLambdaResponseInvalid  = 536
 	StatusLambdaRequestTooLarge  = 537

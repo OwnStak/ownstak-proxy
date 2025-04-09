@@ -1,8 +1,10 @@
 package constants
 
 var (
-	// Default values for the app name and version in the dev mode.
-	// During the build process, these values are overridden with the actual values for production build.
-	AppName = "OwnStack Proxy"
-	Version = "0.0.0"
+	// These are default placeholder values for the app name and version in the dev mode.
+	// During the build process, these values are overridden with the actual version and app name.
+	// See: scripts/build.sh
+	AppName    = "OwnStack Proxy DEV"
+	Version    = "0.0.0"
+	ConsoleURL = "https://console-dev.ownstack.site"
 )

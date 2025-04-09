@@ -42,7 +42,7 @@ var currentLogLevel = INFO
 
 func init() {
 	// Load .env file if it exists
-	godotenv.Load()
+	godotenv.Load(".env", ".env.local")
 
 	// Get log level from environment variable
 	logLevel := os.Getenv("LOG_LEVEL")

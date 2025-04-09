@@ -11,7 +11,7 @@ import (
 
 func main() {
 	// Load environment variables from .env file
-	godotenv.Load()
+	godotenv.Load(".env", ".env.local")
 
 	// Log the app info and start the server
 	logger.Info("%s, Version: %s", constants.AppName, constants.Version)

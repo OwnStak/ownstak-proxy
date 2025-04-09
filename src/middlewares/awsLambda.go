@@ -7,10 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"ownstack-proxy/src/logger"
-	"ownstack-proxy/src/server"
 	"net/http"
 	"os"
+	"ownstack-proxy/src/constants"
+	"ownstack-proxy/src/logger"
+	"ownstack-proxy/src/server"
 	"strings"
 	"time"
 
@@ -84,7 +85,7 @@ type AWSLambdaMiddleware struct {
 func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 	// Check AWS credentials before doing anything
 	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-		logger.Warn("AWS credentials not found. Skipping AWS Lambda middleware.")
+		logger.Warn("Skipping AWS Lambda middleware - AWS credentials not found.")
 		return nil
 	}
 
@@ -137,7 +138,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	accountID, err := m.getAccountID(context.Background(), accountName)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Failed to get AWS account ID: %v", err)
-		ctx.Error(errorMessage, server.StatusInternalServerError)
+		ctx.Error(errorMessage, server.StatusAccountNotFound)
 		return
 	}
 
@@ -145,7 +146,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	lambdaArn := fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s", m.awsConfig.Region, accountID, lambdaName)
 
 	// Create API Gateway v2 JSON event
-	event, err := m.createApiGatewayEvent(ctx, accountID, lambdaName)
+	event, err := m.createApiGatewayEvent(ctx, accountID)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Failed to create API Gateway event: %v", err)
 		ctx.Error(errorMessage, server.StatusInternalServerError)
@@ -160,9 +161,13 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		errorStatus := server.StatusInternalError
 		errorMessage := fmt.Sprintf("Failed to invoke Lambda function: %v", err)
 
-		// Handle known error types
+		// If the Lambda function was not found, it was probably retired.
+		// In this case, we will redirect the user to the OwnStack Console with host passed as a query parameter.
 		if strings.Contains(errorMessage, "ResourceNotFoundException") {
-			errorStatus = server.StatusLambdaNotFound
+			redirectURL := fmt.Sprintf("%s/revive?host=%s", constants.ConsoleURL, ctx.Request.Host)
+			ctx.Response.Headers.Set(server.HeaderLocation, redirectURL)
+			ctx.Response.Status = server.StatusTemporaryRedirect
+			return
 		}
 
 		ctx.Error(errorMessage, errorStatus)
@@ -189,8 +194,6 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		// Handle known error types
 		if strings.Contains(payloadErrorType, "TooManyRequests") {
 			errorStatus = server.StatusLambdaThrottled
-		} else if strings.Contains(payloadErrorType, "NotFound") {
-			errorStatus = server.StatusLambdaNotFound
 		} else if strings.Contains(payloadErrorType, "RequestTooLarge") {
 			errorStatus = server.StatusLambdaRequestTooLarge
 		} else if strings.Contains(payloadErrorType, "ResponseSizeTooLarge") {
@@ -243,25 +246,6 @@ func (m *AWSLambdaMiddleware) getAccountID(ctx context.Context, accountName stri
 		return id, nil
 	}
 
-	// If not in cache, look up in AWS Organizations
-	// For demo, first try to extract from name pattern like "aws-2-account" -> "2"
-	if parts := strings.Split(accountName, "-"); len(parts) > 1 {
-		for _, part := range parts {
-			// Check if this part is numeric
-			if _, err := fmt.Sscanf(part, "%d", new(int)); err == nil {
-				// Construct a fake account ID for demo
-				accountID := fmt.Sprintf("1234567890%s", part)
-				// Pad to 12 digits
-				for len(accountID) < 12 {
-					accountID += "0"
-				}
-				// Cache it
-				m.accountCache[accountName] = accountID
-				return accountID, nil
-			}
-		}
-	}
-
 	// If we couldn't extract an ID, try to look it up via Organizations API
 	// Note: This requires proper permissions
 	input := &organizations.ListAccountsInput{}
@@ -274,19 +258,18 @@ func (m *AWSLambdaMiddleware) getAccountID(ctx context.Context, accountName stri
 		}
 
 		for _, account := range output.Accounts {
-			// Try to match by name or email
-			if strings.Contains(strings.ToLower(*account.Name), strings.ToLower(accountName)) {
+			if strings.EqualFold(accountName, *account.Name) {
 				m.accountCache[accountName] = *account.Id
 				return *account.Id, nil
 			}
 		}
 	}
 
-	return "", fmt.Errorf("could not find AWS account ID for %s, using placeholder", accountName)
+	return "", fmt.Errorf("could not find AWS account ID for name '%s'", accountName)
 }
 
 // createApiGatewayEvent creates an API Gateway v2 JSON event from the request
-func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, accountID, functionName string) ([]byte, error) {
+func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, accountID string) ([]byte, error) {
 	req := ctx.Request
 
 	// Extract headers
@@ -476,11 +459,4 @@ func (m *AWSLambdaMiddleware) processLambdaResponse(ctx *server.ServerContext, l
 	}
 
 	return nil
-}
-
-func ToHtmlErrorBody(errorBody string) string {
-	// Replace \r\n with <br>
-	errorBody = strings.ReplaceAll(errorBody, "\r\n", "<br>")
-	// ... existing code ...
-	return errorBody
 }
