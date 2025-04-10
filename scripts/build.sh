@@ -28,7 +28,16 @@ for PLATFORM in $(echo $PLATFORMS | tr ',' '\n'); do
     echo "Building for $PLATFORM..."
     GOOS=$(echo $PLATFORM | cut -d '/' -f 1)
     GOARCH=$(echo $PLATFORM | cut -d '/' -f 2)
-    GOOS=$GOOS GOARCH=$GOARCH go build -buildvcs=false -ldflags "-X '$DIST_NAME/src/constants.AppName=$APP_NAME' -X '$DIST_NAME/src/constants.Version=$VERSION' -X '$DIST_NAME/src/constants.ConsoleURL=$CONSOLE_URL'" -o $DIST_DIR/$DIST_NAME-$GOOS-$GOARCH ./src/
+    
+    # Determine the file extension based on the OS
+    if [ "$GOOS" == "windows" ]; then
+        EXT=".exe"
+    else
+        EXT=""
+    fi
+
+    OUTPUT_FILE="$DIST_DIR/$DIST_NAME-$GOOS-$GOARCH$EXT"
+    GOOS=$GOOS GOARCH=$GOARCH go build -buildvcs=false -ldflags "-X '$DIST_NAME/src/constants.AppName=$APP_NAME' -X '$DIST_NAME/src/constants.Version=$VERSION' -X '$DIST_NAME/src/constants.ConsoleURL=$CONSOLE_URL'" -o $OUTPUT_FILE ./src/
 done
 
 echo "✅ Build complete!"

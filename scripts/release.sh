@@ -32,7 +32,14 @@ aws --profile default ecr get-login-password --region $AWS_REGION | sudo docker 
 echo "Releasing $APP_NAME $VERSION Docker images:"
 sudo docker buildx create --use
 
-PLATFORMS_ARRAY=($(echo $PLATFORMS | tr ',' '\n'))
+# Keep only linux based platforms for Docker images
+PLATFORMS_ARRAY=($(echo $PLATFORMS | tr ',' '\n' | grep -E "^linux/"))
+
+echo "Releasing Docker image for following platforms:"
+for PLATFORM in "${PLATFORMS_ARRAY[@]}"; do
+    echo "  $PLATFORM"
+done
+
 for PLATFORM in "${PLATFORMS_ARRAY[@]}"; do
     echo "Releasing Docker image for $PLATFORM..."
     OS=$(echo $PLATFORM | cut -d '/' -f 1)

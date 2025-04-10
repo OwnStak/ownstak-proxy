@@ -15,12 +15,12 @@ const (
 	HeaderForwardedProto  = "X-Forwarded-Proto"
 	HeaderForwardedPort   = "X-Forwarded-Port"
 
-	// Custom Lambda Proxy headers
-	HeaderProxyVersion   = "X-Proxy-Version"
-	HeaderLambdaName     = "X-Lambda-Name"
-	HeaderLambdaRegion   = "X-Lambda-Region"
-	HeaderLambdaTime     = "X-Lambda-Time"
-	HeaderFollowRedirect = "X-Follow-Redirect"
+	// Custom OwnStak Proxy headers
+	HeaderProxyVersion   = "X-Own-Proxy-Version"
+	HeaderFollowRedirect = "X-Own-Follow-Redirect"
+	HeaderLambdaName     = "X-Own-Lambda-Name"
+	HeaderLambdaRegion   = "X-Own-Lambda-Region"
+	HeaderLambdaTime     = "X-Own-Lambda-Time"
 )
 
 // Content type constants
