@@ -1,0 +1,2 @@
+# Treat all files in the lib directory as binary (so,dylib,dll)
+lib/* binary

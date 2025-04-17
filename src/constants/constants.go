@@ -6,5 +6,6 @@ var (
 	// See: scripts/build.sh
 	AppName    = "OwnStak Proxy DEV"
 	Version    = "0.0.0"
-	ConsoleURL = "https://console-dev.ownstak.link"
+	ConsoleURL = "https://console-dev.ownstak.com"
+	Mode       = "development" // "development" or "production" (boolean would be better, but linker doesn't seem to support it with -X flag)
 )

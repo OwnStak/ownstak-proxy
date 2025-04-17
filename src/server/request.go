@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"ownstak-proxy/src/constants"
 	"strings"
 )
 
@@ -34,7 +35,7 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 	// e.g: https://site-125.aws-2-account.ownstak.link
 	// e.g: https://site-125.aws-2-account.ownstak.link,https://site-125.aws-3-account.ownstak.link
 	host := r.Host
-	if forwardedHost := r.Header.Get(HeaderForwardedHost); forwardedHost != "" {
+	if forwardedHost := r.Header.Get(HeaderXForwardedHost); forwardedHost != "" {
 		// If there are multiple forwarded hosts, use the last one
 		if commaIdx := strings.LastIndex(forwardedHost, ","); commaIdx != -1 {
 			host = strings.TrimSpace(forwardedHost[commaIdx+1:])
@@ -42,6 +43,8 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 			host = forwardedHost
 		}
 	}
+	// Remove port from host if present
+	host = strings.Split(host, ":")[0]
 
 	// Parse query parameters directly from the URL
 	queryParams := r.URL.Query()
@@ -50,7 +53,7 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
-	} else if forwardedProto := r.Header.Get("X-Forwarded-Proto"); forwardedProto != "" {
+	} else if forwardedProto := r.Header.Get(HeaderXForwardedProto); forwardedProto != "" {
 		scheme = forwardedProto
 	}
 
@@ -83,18 +86,30 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 
 	// Get remote address (client IP)
 	remoteAddr := r.RemoteAddr
-	if xForwardedFor := r.Header.Get("X-Forwarded-For"); xForwardedFor != "" {
+	if xForwardedFor := r.Header.Get(HeaderXForwardedFor); xForwardedFor != "" {
 		// Use the leftmost IP which is the original client
 		remoteAddr = strings.Split(xForwardedFor, ",")[0]
 		remoteAddr = strings.TrimSpace(remoteAddr)
 	}
+	// Remove port from remoteAddr if present
+	remoteAddr = strings.Split(remoteAddr, ":")[0]
+
+	headers := make(http.Header)
+	for key, values := range r.Header {
+		for _, value := range values {
+			headers.Add(key, value)
+		}
+	}
+	headers.Set(HeaderHost, host)
+	headers.Set(HeaderXOwnProxy, "true")
+	headers.Set(HeaderXOwnProxyVersion, constants.Version)
 
 	return &ServerRequest{
 		Method:     r.Method,
 		URL:        r.URL.String(),
 		Path:       r.URL.Path,
 		Host:       host,
-		Headers:    r.Header,
+		Headers:    headers,
 		Body:       body,
 		Query:      queryParams,
 		Protocol:   protocol,

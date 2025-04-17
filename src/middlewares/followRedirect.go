@@ -3,9 +3,9 @@ package middlewares
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
-	"net/http"
 	"strings"
 )
 
@@ -28,7 +28,7 @@ func (m *FollowRedirectMiddleware) OnRequest(ctx *server.ServerContext, next fun
 
 func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
 	redirectURL := ctx.Response.Headers.Get(server.HeaderLocation)
-	followRedirect := ctx.Response.Headers.Get(server.HeaderFollowRedirect)
+	followRedirect := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)
 
 	// If the response is a redirect and X-Follow-Redirect header is true, we need to pass it to the next FollowRedirectMiddleware and follow it.
 	// e.g: 302 Location: https://site-bucket.s3.amazonaws.com/site-125/index.html
@@ -38,7 +38,16 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 		// Normalize the redirect URL (convert relative to absolute if needed)
 		redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)
 
+		// Preserve our internal headers from existing response
+		// in the final response for debugging purposes
+		internalHeaders := make(http.Header)
+		for k, v := range ctx.Response.Headers {
+			if strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
+				internalHeaders[k] = v
+			}
+		}
 		ctx.Response.Clear()
+		ctx.Response.Headers = internalHeaders
 
 		// Create a custom HTTP client with redirect policy
 		client := &http.Client{
@@ -61,7 +70,10 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 
 		// Set the response status and headers
 		ctx.Response.Status = resp.StatusCode
-		ctx.Response.Headers = resp.Header
+		// Merge the response headers with the internal headers
+		for k, v := range resp.Header {
+			ctx.Response.Headers.Set(k, v[0])
+		}
 
 		// Set the response body
 		body, err := io.ReadAll(resp.Body)

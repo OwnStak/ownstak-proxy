@@ -49,7 +49,7 @@ func NewServerInfoMiddleware() *ServerInfoMiddleware {
 
 // OnRequest handles the request phase
 func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
-	ctx.Request.Headers.Set(server.HeaderProxyVersion, constants.Version)
+	ctx.Request.Headers.Set(server.HeaderXOwnProxyVersion, constants.Version)
 
 	// Only process requests to the internal info path
 	if ctx.Request.Path != "/__internal__/info" {
@@ -112,6 +112,6 @@ func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func())
 
 // OnResponse adds version header to all responses
 func (m *ServerInfoMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
-	ctx.Response.Headers.Set(server.HeaderProxyVersion, constants.Version)
+	ctx.Response.Headers.Set(server.HeaderXOwnProxyVersion, constants.Version)
 	next()
 }

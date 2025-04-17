@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Fail on error
+set -euo pipefail
+
 # Path to the .env file
 ENV_FILE=".env"
 

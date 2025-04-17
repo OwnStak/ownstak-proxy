@@ -85,7 +85,7 @@ type AWSLambdaMiddleware struct {
 func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 	// Check AWS credentials before doing anything
 	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-		logger.Warn("Skipping AWS Lambda middleware - AWS credentials not found.")
+		logger.Warn("Disabling AWS Lambda middleware - AWS credentials not found.")
 		return nil
 	}
 
@@ -221,15 +221,15 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	}
 
 	// Store details for the response phase
-	ctx.Response.Headers.Set(server.HeaderLambdaName, lambdaName)
-	ctx.Response.Headers.Set(server.HeaderLambdaRegion, m.awsConfig.Region)
+	ctx.Response.Headers.Set(server.HeaderXOwnLambdaName, lambdaName)
+	ctx.Response.Headers.Set(server.HeaderXOwnLambdaRegion, m.awsConfig.Region)
 
 	// No need to call next() as we've fully handled the request
 }
 
 // OnResponse adds Lambda headers to the response
 func (m *AWSLambdaMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
-	ctx.Response.Headers.Set(server.HeaderLambdaRegion, m.awsConfig.Region)
+	ctx.Response.Headers.Set(server.HeaderXOwnLambdaRegion, m.awsConfig.Region)
 	next()
 }
 
@@ -278,6 +278,9 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 		// API Gateway normalizes headers to lowercase
 		headers[strings.ToLower(key)] = values[0]
 	}
+
+	//headers[server.HeaderXOwnProxy] = "true"
+	//headers[server.HeaderXOwnProxyVersion] = constants.Version
 
 	// Extract query parameters and handle duplicates
 	queryParams := make(map[string]string)
@@ -339,7 +342,7 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 			Http: HttpDetails{
 				Method:    req.Method,
 				Path:      req.Path,
-				Protocol:  "HTTP/1.1",
+				Protocol:  req.Scheme,
 				SourceIp:  "", // Default to an empty string
 				UserAgent: "", // Default to an empty string
 			},
@@ -369,7 +372,7 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 	}
 
 	// Safely extract source IP from the X-Forwarded-For header
-	if xForwardedFor := headers["x-forwarded-for"]; xForwardedFor != "" {
+	if xForwardedFor := headers[server.HeaderXForwardedFor]; xForwardedFor != "" {
 		ips := strings.Split(xForwardedFor, ",")
 		if len(ips) > 0 {
 			event.RequestContext.Http.SourceIp = strings.TrimSpace(ips[0])
@@ -377,7 +380,7 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 	}
 
 	// Safely extract user agent from the User-Agent header
-	if userAgent, exists := headers["user-agent"]; exists {
+	if userAgent, exists := headers[server.HeaderUserAgent]; exists {
 		event.RequestContext.Http.UserAgent = userAgent
 	}
 

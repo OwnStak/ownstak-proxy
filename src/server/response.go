@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"ownstak-proxy/src/constants"
 )
 
 type ServerResponse struct {
@@ -14,6 +15,7 @@ type ServerResponse struct {
 func NewServerResponse() *ServerResponse {
 	headers := make(http.Header)
 	headers.Set(HeaderContentType, ContentTypePlain)
+	headers.Set(HeaderXOwnProxyVersion, constants.Version)
 
 	return &ServerResponse{
 		Status:  http.StatusOK,

@@ -2,27 +2,29 @@
 The OwnStak Proxy is a simple proxy server that works as API Gateway replacement for OwnStak with more features and higher limits. 
 It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invoking the Lambda function directly with API Gateway v2 compatible payload.
 
-## Supported features
+## Features
 - [x] AWS Lambda
     - [x] Invocation in BUFFERED mode
     - [ ] Invocation in STREAMING mode
     - [x] Basic error handling for Lambda functions
 - [x] Following redirects to another hosts (S3, etc...)
+- [x] Image Optimization
 - [ ] Response streaming
 - [ ] Caching
 - [ ] Basic logging
 - [ ] Basic metrics
 
 ## Requirements
-- GoLang 1.22+
+- **GoLang 1.22+**
+- **glib/glibc/libc6-compat** - *Usually it's part of the system. Just minimal Alpine Linux images don't have it.*
 
 ## Installation
-1. Clone the repository
+### 1. Clone the repository
 ```bash
 git clone git@github.com:ownstak-org/ownstak-proxy.git
 ```
 
-2. Install Go from package repository
+### 2. Install Go from package repository
 ```bash
 # macOS
 brew install go
@@ -36,10 +38,31 @@ sudo apt install golang
 Or install the latest version from source on [GoLang website](https://go.dev/dl/)
 
 
-3. Install dependencies
+### 3. Install go packages
 ```bash
 ./scripts/install.sh
 ```
+
+### 4. Optional: Install libvips for Image Optimizer   
+The libvips is dynamic library needed for the Image Optimizer middleware to work. 
+The lib folder already contains the prebuilt binaries for the most popualr platforms with included all dependencies for webp,jpeg,png...formats. 
+If the pre-built libvips binary from `./lib` doesn't work for you for some reason, you might need to install it manually to your system from the repo. 
+The OwnStak Proxy is also possible to build and use even without libvips. The Image Optimizater middleware will then act as simple proxy and return image unchanged.
+
+You can install it by running:
+
+```bash
+# macOS
+brew install vips glibc
+```
+
+```bash
+# Ubuntu/Debian based distros
+sudo apt-get install libvips libc6
+```
+
+If `./lib` folder is empty for you, you can download binaries by running `./scripts/install-libvips.sh`.
+For libvips debugging, set `DEBUG_VIPS=true` env variable.
 
 ## Development
 Just run the following command to build the app and start the development server. 

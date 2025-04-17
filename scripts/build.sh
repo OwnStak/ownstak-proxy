@@ -1,6 +1,9 @@
 #!/bin/bash
 source .env
 
+# Fail on error
+set -euo pipefail
+
 # Assign default platforms if not set
 if [ -z "$PLATFORMS" ]; then
     PLATFORMS="linux/amd64"
@@ -22,6 +25,9 @@ rm -rf $DIST_DIR
 # Create dist directory if it doesn't exist
 mkdir -p $DIST_DIR
 
+# Copy libraries
+cp -r lib $DIST_DIR/
+
 # Build for each platform
 echo "Building $APP_NAME $VERSION:"
 for PLATFORM in $(echo $PLATFORMS | tr ',' '\n'); do
@@ -37,7 +43,7 @@ for PLATFORM in $(echo $PLATFORMS | tr ',' '\n'); do
     fi
 
     OUTPUT_FILE="$DIST_DIR/$DIST_NAME-$GOOS-$GOARCH$EXT"
-    GOOS=$GOOS GOARCH=$GOARCH go build -buildvcs=false -ldflags "-X '$DIST_NAME/src/constants.AppName=$APP_NAME' -X '$DIST_NAME/src/constants.Version=$VERSION' -X '$DIST_NAME/src/constants.ConsoleURL=$CONSOLE_URL'" -o $OUTPUT_FILE ./src/
+    CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "-X '$DIST_NAME/src/constants.AppName=$APP_NAME' -X '$DIST_NAME/src/constants.Version=$VERSION' -X '$DIST_NAME/src/constants.ConsoleURL=$CONSOLE_URL' -X '$DIST_NAME/src/constants.Mode=production'" -o $OUTPUT_FILE ./src/
 done
 
 echo "✅ Build complete!"

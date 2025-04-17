@@ -1,5 +1,7 @@
 #!/bin/bash
 source .env
+
+# Fail on error
 set -euo pipefail
 
 if [ ! -d $DIST_DIR ]; then
@@ -44,10 +46,14 @@ for PLATFORM in "${PLATFORMS_ARRAY[@]}"; do
     echo "Releasing Docker image for $PLATFORM..."
     OS=$(echo $PLATFORM | cut -d '/' -f 1)
     ARCH=$(echo $PLATFORM | cut -d '/' -f 2)
-    sudo docker buildx build --build-arg OS=$OS --build-arg ARCH=$ARCH --build-arg DIST_NAME=$DIST_NAME --platform "$PLATFORM" --squash -t $REGISTRY_URL/$DIST_NAME:$VERSION-$ARCH --push .
+    sudo docker buildx build --build-arg OS=$OS --build-arg ARCH=$ARCH --build-arg DIST_NAME=$DIST_NAME --platform "$PLATFORM" --squash -t $REGISTRY_URL/$DIST_NAME:$VERSION-$ARCH --push . --progress=plain
 done
 
 # Create and push a manifest list for the multi-architecture images
 sudo docker buildx imagetools create --tag $REGISTRY_URL/$DIST_NAME:$VERSION $(for PLATFORM in "${PLATFORMS_ARRAY[@]}"; do ARCH=$(echo $PLATFORM | cut -d'/' -f2); echo "$REGISTRY_URL/$DIST_NAME:$VERSION-$ARCH"; done)
+
+# Clean up the buildx containers
+sudo docker buildx rm
+
 echo "✅ Release complete!"
 echo "Image: $REGISTRY_URL/$DIST_NAME:$VERSION"
