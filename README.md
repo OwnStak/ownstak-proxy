@@ -9,7 +9,9 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
     - [x] Basic error handling for Lambda functions
 - [x] Following redirects to another hosts (S3, etc...)
 - [x] Image Optimization
-- [ ] Response streaming
+- [x] Response streaming
+    - [x] Streaming assets from S3 directly to client
+    - [ ] Streaming response from Lambda directly to client
 - [ ] Caching
 - [ ] Basic logging
 - [ ] Basic metrics
