@@ -43,8 +43,6 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 			host = forwardedHost
 		}
 	}
-	// Remove port from host if present
-	host = strings.Split(host, ":")[0]
 
 	// Parse query parameters directly from the URL
 	queryParams := r.URL.Query()
@@ -54,19 +52,37 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 	if r.TLS != nil {
 		scheme = "https"
 	} else if forwardedProto := r.Header.Get(HeaderXForwardedProto); forwardedProto != "" {
-		scheme = forwardedProto
+		// If there are multiple forwarded protocols, use the last one
+		if commaIdx := strings.LastIndex(forwardedProto, ","); commaIdx != -1 {
+			scheme = strings.TrimSpace(forwardedProto[commaIdx+1:])
+		} else {
+			scheme = forwardedProto
+		}
 	}
 
 	// Extract port from host or use default
 	port := ""
-	if hostPort := strings.Split(host, ":"); len(hostPort) > 1 {
-		port = hostPort[1]
+	if hostPort := r.Header.Get(HeaderXForwardedPort); hostPort != "" {
+		// If there are multiple forwarded ports, use the last one
+		if commaIdx := strings.LastIndex(hostPort, ","); commaIdx != -1 {
+			port = strings.TrimSpace(hostPort[commaIdx+1:])
+		} else {
+			port = hostPort
+		}
 	} else {
 		// Use default ports based on scheme
-		if scheme == "https" {
-			port = "443"
+		hostPort := r.Host
+		if hostPort != "" {
+			hostPortParts := strings.Split(hostPort, ":")
+			if len(hostPortParts) > 1 {
+				port = hostPortParts[1]
+			}
 		} else {
-			port = "80"
+			if scheme == "https" {
+				port = "443"
+			} else {
+				port = "80"
+			}
 		}
 	}
 

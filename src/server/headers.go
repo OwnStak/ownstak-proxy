@@ -3,19 +3,20 @@ package server
 // HTTP header constants
 const (
 	// Standard HTTP headers
-	HeaderContentType     = "Content-Type"
-	HeaderContentLength   = "Content-Length"
-	HeaderContentEncoding = "Content-Encoding"
-	HeaderCacheControl    = "Cache-Control"
-	HeaderLocation        = "Location"
-	HeaderHost            = "Host"
-	HeaderAccept          = "Accept"
-	HeaderRequestID       = "X-Request-ID"
-	HeaderUserAgent       = "User-Agent"
-	HeaderXForwardedHost  = "X-Forwarded-Host"
-	HeaderXForwardedFor   = "X-Forwarded-For"
-	HeaderXForwardedProto = "X-Forwarded-Proto"
-	HeaderXForwardedPort  = "X-Forwarded-Port"
+	HeaderContentType      = "Content-Type"
+	HeaderContentLength    = "Content-Length"
+	HeaderContentEncoding  = "Content-Encoding"
+	HeaderCacheControl     = "Cache-Control"
+	HeaderLocation         = "Location"
+	HeaderHost             = "Host"
+	HeaderAccept           = "Accept"
+	HeaderRequestID        = "X-Request-ID"
+	HeaderUserAgent        = "User-Agent"
+	HeaderXForwardedHost   = "X-Forwarded-Host"
+	HeaderXForwardedFor    = "X-Forwarded-For"
+	HeaderXForwardedProto  = "X-Forwarded-Proto"
+	HeaderXForwardedPort   = "X-Forwarded-Port"
+	HeaderTransferEncoding = "Transfer-Encoding"
 
 	// Custom OwnStak Proxy headers
 	HeaderXOwnPrefix            = "X-Own-"
@@ -27,6 +28,7 @@ const (
 	HeaderXOwnLambdaTime        = HeaderXOwnPrefix + "Lambda-Time"
 	HeaderXOwnImageOptimizer    = HeaderXOwnPrefix + "Image-Optimizer"
 	HeaderXOwnImageOptimizError = HeaderXOwnPrefix + "Image-Optimizer-Error"
+	HeaderXOwnLambdaMode        = HeaderXOwnPrefix + "Lambda-Mode" // sync or async
 )
 
 // Content type constants

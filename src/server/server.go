@@ -222,8 +222,8 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Log incoming requests in debug mode
 	logger.Debug("%s %s", req.Method, req.URL)
 
-	// Create a new ServerResponse
-	res := NewServerResponse()
+	// Create a new ServerResponse with the http.ResponseWriter
+	res := NewServerResponse(w)
 
 	// Create a context containing request, response, and globally shared cache
 	ctx := NewServerContext(req, res, s)
@@ -231,8 +231,8 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Execute middleware chain
 	s.middleware.Execute(ctx)
 
-	// Return the response
-	res.WriteTo(w)
+	// Send response to client
+	res.End()
 }
 
 func (s *Server) generateSelfSignedCert() {

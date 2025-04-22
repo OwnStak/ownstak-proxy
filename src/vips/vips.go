@@ -436,7 +436,7 @@ func savePng(img *Image, quality int) (int, unsafe.Pointer, int) {
 		unsafe.Pointer(&size),
 		"compression", compressionLevel,
 		"interlace", 0,
-		"filter", 0, // No filter
+		"filter", 5, // VIPS_FOREIGN_PNG_FILTER_ALL
 		nil)
 
 	if debug {
@@ -467,7 +467,7 @@ func saveWebp(img *Image, quality int) (int, unsafe.Pointer, int) {
 		unsafe.Pointer(&ptr),
 		unsafe.Pointer(&size),
 		"Q", quality,
-		"lossy", 0, // Use lossy compression
+		"lossless", 0, // Use lossy compression
 		nil)
 
 	if debug {

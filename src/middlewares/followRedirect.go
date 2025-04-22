@@ -59,8 +59,26 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 			},
 		}
 
-		// Fetch the redirect URL
-		resp, err := client.Get(redirectURL)
+		// Enable streaming for the response
+		ctx.Response.EnableStreaming()
+
+		// Start a GET request with streaming
+		req, err := http.NewRequest("GET", redirectURL, nil)
+		if err != nil {
+			errorMessage := fmt.Sprintf("Failed to create request for redirect to '%s': %v", redirectURL, err)
+			ctx.Error(errorMessage, http.StatusInternalServerError)
+			return
+		}
+
+		// Copy headers from the original request
+		for k, v := range ctx.Request.Headers {
+			if k != server.HeaderHost && !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
+				req.Header.Set(k, v[0])
+			}
+		}
+
+		// Execute the request
+		resp, err := client.Do(req)
 		if err != nil {
 			errorMessage := fmt.Sprintf("Failed to follow redirect to '%s': %v", redirectURL, err)
 			ctx.Error(errorMessage, http.StatusInternalServerError)
@@ -68,25 +86,47 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 		}
 		defer resp.Body.Close()
 
-		// Set the response status and headers
+		// Set the response status and merge headers
 		ctx.Response.Status = resp.StatusCode
-		// Merge the response headers with the internal headers
 		for k, v := range resp.Header {
-			ctx.Response.Headers.Set(k, v[0])
+			if !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
+				ctx.Response.Headers.Set(k, v[0])
+			}
 		}
 
-		// Set the response body
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			errorMessage := fmt.Sprintf("Failed to read response body while following redirect to '%s': %v", redirectURL, err)
-			ctx.Error(errorMessage, http.StatusInternalServerError)
-			return
+		// Copy content information headers
+		if contentLength := resp.Header.Get(server.HeaderContentLength); contentLength != "" {
+			ctx.Response.Headers.Set(server.HeaderContentLength, contentLength)
 		}
-		ctx.Response.Body = body
+		if contentType := resp.Header.Get(server.HeaderContentType); contentType != "" {
+			ctx.Response.Headers.Set(server.HeaderContentType, contentType)
+		}
+
+		// The files on S3 can be very large, that's why we need to stream the response
+		// back to client right away and not buffer it in memory for other middlewares.
+		ctx.Response.EnableStreaming()
+		buffer := make([]byte, 32*1024) // 32KB chunks
+		for {
+			n, err := resp.Body.Read(buffer)
+			if n > 0 {
+				// Write the chunk to the response
+				_, writeErr := ctx.Response.Write(buffer[:n])
+				if writeErr != nil {
+					// Client peer is gone, stop streaming
+					break
+				}
+			}
+
+			if err != nil {
+				if err != io.EOF {
+					logger.Error("Error reading from redirect response: %v", err)
+				}
+				break
+			}
+		}
+
+		// If the response was streamed, no other middlewares can be executed
 	}
-
-	// Nothing to do in response phase
-	next()
 }
 
 // NormalizeRedirectURL converts a potentially relative URL to an absolute URL

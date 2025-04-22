@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 )
 
@@ -153,8 +154,14 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		return
 	}
 
+	// Determine if we should use sync or async mode (buffered or streaming invocation)
+	asyncMode := false
+	if ctx.Request.Headers.Get(server.HeaderXOwnLambdaMode) == "async" {
+		asyncMode = true
+	}
 	// Invoke Lambda function
-	response, err := m.invokeLambda(context.Background(), lambdaArn, event)
+	response, err := m.invokeLambda(context.Background(), lambdaArn, event, asyncMode)
+
 	// Handle invocation errors
 	if err != nil {
 		// Default error
@@ -387,15 +394,114 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 	return json.Marshal(event)
 }
 
-// invokeLambda invokes the specified Lambda function with the given payload
-func (m *AWSLambdaMiddleware) invokeLambda(ctx context.Context, lambdaArn string, payload []byte) (*lambda.InvokeOutput, error) {
+// invokeLambdaAsync invokes the specified Lambda function with the given payload using streaming mode
+func (m *AWSLambdaMiddleware) invokeLambdaAsync(ctx context.Context, lambdaArn string, payload []byte) (*lambda.InvokeOutput, error) {
+	// Use streaming mode for Lambda invocation
+	input := &lambda.InvokeWithResponseStreamInput{
+		FunctionName: aws.String(lambdaArn),
+		Payload:      payload,
+	}
+
+	logger.Debug("Invoking Lambda function in streaming mode: %s", lambdaArn)
+	streamOutput, err := m.lambdaClient.InvokeWithResponseStream(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the event stream and ensure it's closed when done
+	eventStream := streamOutput.GetStream()
+	defer eventStream.Close()
+
+	// Define a maximum response size limit (20MB - AWS Lambda's maximum)
+	const maxResponseSize = 20 * 1024 * 1024
+	var responseSize int
+	var responsePayload []byte
+	var errorInfo *types.InvokeWithResponseStreamResponseEventMemberInvokeComplete
+
+	// Read the streaming response
+	for event := range eventStream.Events() {
+		// Type switch on the event to handle different event types
+		switch e := event.(type) {
+		case *types.InvokeWithResponseStreamResponseEventMemberPayloadChunk:
+			// Check if adding this chunk would exceed our limit
+			chunkSize := len(e.Value.Payload)
+			responseSize += chunkSize
+
+			if responseSize > maxResponseSize {
+				// Stop processing and return an error
+				logger.Error("Lambda response exceeds size limit of %d bytes", maxResponseSize)
+				return nil, fmt.Errorf("lambda response too large: exceeds %d bytes", maxResponseSize)
+			}
+
+			responsePayload = append(responsePayload, e.Value.Payload...)
+		case *types.InvokeWithResponseStreamResponseEventMemberInvokeComplete:
+			// Store the completion info - contains error details if any
+			errorInfo = e
+			// Check for function error
+			if e.Value.ErrorCode != nil && *e.Value.ErrorCode != "" {
+				logger.Error("Lambda function error: %s", *e.Value.ErrorCode)
+				// Create an error that matches the format expected by the caller
+				var functionError string
+				if e.Value.ErrorCode != nil {
+					functionError = *e.Value.ErrorCode
+				}
+
+				errorMessage := "Lambda function execution failed"
+				if e.Value.ErrorDetails != nil {
+					errorMessage = *e.Value.ErrorDetails
+				}
+
+				return &lambda.InvokeOutput{
+					FunctionError: &functionError,
+					Payload:       []byte(fmt.Sprintf(`{"errorType":"%s","errorMessage":"%s"}`, *e.Value.ErrorCode, errorMessage)),
+					StatusCode:    streamOutput.StatusCode,
+				}, nil
+			}
+		}
+	}
+
+	// Check for any error from the stream
+	if err := eventStream.Err(); err != nil {
+		logger.Error("Stream error: %v", err)
+		return nil, fmt.Errorf("stream error: %v", err)
+	}
+
+	// Handle the case where execution exceeds Lambda execution time
+	if responsePayload == nil && errorInfo == nil {
+		logger.Error("Lambda execution timed out or did not return a response")
+		return nil, fmt.Errorf("lambda execution timed out or did not return a response")
+	}
+
+	// Construct the InvokeOutput
+	invokeOutput := &lambda.InvokeOutput{
+		Payload:    responsePayload,
+		StatusCode: streamOutput.StatusCode,
+	}
+
+	return invokeOutput, nil
+}
+
+// invokeLambdaSync invokes the specified Lambda function with the given payload using standard synchronous mode
+func (m *AWSLambdaMiddleware) invokeLambdaSync(ctx context.Context, lambdaArn string, payload []byte) (*lambda.InvokeOutput, error) {
+	// Use standard synchronous Lambda invocation
 	input := &lambda.InvokeInput{
 		FunctionName: aws.String(lambdaArn),
 		Payload:      payload,
 	}
 
-	logger.Debug("Invoking Lambda function: %s", lambdaArn)
+	logger.Debug("Invoking Lambda function in synchronous mode: %s", lambdaArn)
+
+	// Invoke the function synchronously
 	return m.lambdaClient.Invoke(ctx, input)
+}
+
+// invokeLambda determines which invocation method to use based on the payload size and other factors
+func (m *AWSLambdaMiddleware) invokeLambda(ctx context.Context, lambdaArn string, payload []byte, asyncMode bool) (*lambda.InvokeOutput, error) {
+	if asyncMode {
+		return m.invokeLambdaAsync(ctx, lambdaArn, payload)
+	} else {
+		return m.invokeLambdaSync(ctx, lambdaArn, payload)
+	}
 }
 
 // processLambdaResponse processes the Lambda response and updates the ServerContext
