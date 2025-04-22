@@ -28,7 +28,8 @@ else
     echo "✅ ~/.aws/credentials file found"
 fi
 
-aws --profile default ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $REGISTRY_URL
+# us-east-2 doesn't work with ecr-public registry?
+aws --profile default ecr-public get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY_URL
 
 # Build for each platform
 echo "Releasing $APP_NAME $VERSION Docker images:"
