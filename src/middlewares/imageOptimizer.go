@@ -203,36 +203,41 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		return
 	}
 
-	// If the Image Optimizer is disabled or the image type is an SVG,
-	// just return the original image unchanged, so it still works locally even without the libvips installed.
-	if !enabled || strings.Contains(resp.Header.Get(server.HeaderContentType), "svg") {
-		// Read the SVG data
-		bodyData, err := io.ReadAll(resp.Body)
-		if err != nil {
-			ctx.Error(fmt.Sprintf("Failed to read body data: %v", err), http.StatusBadRequest)
+	// Check content length
+	contentLength := resp.Header.Get(server.HeaderContentLength)
+	if contentLength != "" {
+		// Check if the content length is too large
+		contentLengthInt, err := strconv.Atoi(contentLength)
+		if err == nil && contentLengthInt > maxImageSize {
+			ctx.Error(fmt.Sprintf("The response content-length header exceeds maximum limit of %d bytes", maxImageSize), http.StatusBadRequest)
 			return
 		}
-
-		// Set response headers
-		ctx.Response.Headers.Set(server.HeaderContentType, resp.Header.Get(server.HeaderContentType))
-		ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s", enabled, urlStr))
-		ctx.Response.Status = http.StatusOK
-		ctx.Response.Body = bodyData
-		return
 	}
 
-	// Read the image data after we are sure it's an image
-	// and it fits into the max image size limit, so someone cannot abuse this and force us to fetch 10GB files.
-	imageData, err := io.ReadAll(resp.Body)
+	// Read the image data after we are sure it's an image and it fits into the max image size limit
+	// Use LimitReader to ensure we don't read more than maxImageSize + 1 bytes
+	// This protects against someone abusing the service to fetch massive files
+	imageData, err := io.ReadAll(io.LimitReader(resp.Body, maxImageSize+1))
 	if err != nil {
 		ctx.Error(fmt.Sprintf("Failed to read image data: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	// Check image size
+	// Check if we hit the size limit
 	if len(imageData) > maxImageSize {
 		ctx.Error(fmt.Sprintf("Image size exceeds maximum limit of %d bytes", maxImageSize), http.StatusBadRequest)
+		return
+	}
+
+	// If the Image Optimizer is disabled or the image type is an SVG,
+	// just return the original image unchanged, so it still works locally even without the libvips installed.
+	if !enabled || strings.Contains(resp.Header.Get(server.HeaderContentType), "svg") {
+		// Set response headers and
+		ctx.Response.Headers.Set(server.HeaderContentType, resp.Header.Get(server.HeaderContentType))
+		ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
+		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s", enabled, urlStr))
+		ctx.Response.Status = http.StatusOK
+		ctx.Response.Body = imageData
 		return
 	}
 
