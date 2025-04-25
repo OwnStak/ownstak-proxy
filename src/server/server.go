@@ -233,6 +233,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Send response to client
 	res.End()
+	res = nil
 }
 
 func (s *Server) generateSelfSignedCert() {

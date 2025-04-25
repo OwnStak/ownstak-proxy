@@ -16,6 +16,7 @@ func main() {
 	// Log the app info and start the server
 	logger.Info("%s, Version: %s, Mode: %s", constants.AppName, constants.Version, constants.Mode)
 	server.NewServer().
+		Use(middlewares.NewHealthcheckMiddleware()).
 		Use(middlewares.NewRequestIdMiddleware()).
 		Use(middlewares.NewServerInfoMiddleware()).
 		Use(middlewares.NewImageOptimizerMiddleware()).

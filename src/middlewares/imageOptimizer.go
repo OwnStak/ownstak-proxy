@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +15,10 @@ import (
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
+	"ownstak-proxy/src/utils"
 	"ownstak-proxy/src/vips"
+
+	"github.com/google/uuid"
 )
 
 /**
@@ -24,6 +29,13 @@ import (
  * They don't need to be on OwnStak platform, so customers can fetch images from CDN cache.
  * The underlying library is libvips and it uses its own pool of threads to process images.
  *
+ * Throttling:
+ * All image optimization requests are put into a queue and processed in FIFO order with configured concurrency based on VIPS_CONCURRENCY environment variable.
+ * This is by default half of the available CPUs/threads to make sure it doesn't put too much load on the system and proxy has enough resources to handle standard IO requests.
+ * If the request is in the queue too long, the client close/reset the connection during the waiting, the image optimization task is skipped.
+ * Each concurrent thread that processes the image consumes around 100MB of RAM memory depending on image size, format etc...
+ *
+ * Usage:
  * The Image Optimizer is enabled by default as long as the libvips library was found on the system.
  * It has the same syntax as image optimizer from Next.js, so it works as drop-in replacement.
  *
@@ -62,13 +74,13 @@ const maxImageSize = 6 * 1024 * 1024 // 6MB
 
 // Maximum width or height in pixels of image that optimizer will return.
 // Exceeding this limit won't throw an error, but the image will be resized to the limit.
-const maxDimension = 3840
+const maxDimension = 2560
 
 // Default width of image that optimizer will return.
 const defaultWidth = 0  // 0 means auto
 const defaultHeight = 0 // 0 means auto
 const defaultFormat = "webp"
-const defaultQuality = 70
+const defaultQuality = 60
 
 // Cache control header value for optimized images.
 // Optimized images should be cached "publicly" by the CDN.
@@ -77,28 +89,45 @@ const cacheControl = "public, max-age=31536000"
 // Supported formats by vips.
 // Can be also used as output formats.
 // SVG is an exception, it will be always returned unchanged.
-var supportedFormats = map[string]bool{
-	"png":  true,
+var supportedOutputFormats = map[string]bool{
 	"gif":  true,
 	"jpg":  true,
 	"jpeg": true,
 	"webp": true,
-	"avif": true,
 }
 
 type ImageOptimizerMiddleware struct {
 	enabled bool
+	// Channel to control concurrent image processing and fetching
+	fetchQueue   chan struct{}
+	processQueue chan struct{}
 }
 
 func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
 	// Initialize libvips
 	enabled := true
+	processConcurrency := 1
+	fetchConcurrency := 10
+
 	if err := vips.Initialize(); err != nil {
 		logger.Warn("Disabling Image Optimizer middleware - Failed to initialize libvips: %v", err)
 		enabled = false
+	} else {
+		// Defines how many concurrent requests to Image Optimizer can start to fetch and processat the same time.
+		// The actual processing will be done by VIPS workers with VIPS_CONCURRENCY threads.
+		// Each VIPS concurrent thread consumes around 100MB of RAM memory depending on image size, format etc...
+		processConcurrency = vips.GetConcurrency()
+		fetchConcurrency = processConcurrency * 10
 	}
+
+	// Create a buffered channel to control concurrency
+	processQueue := make(chan struct{}, processConcurrency)
+	fetchQueue := make(chan struct{}, fetchConcurrency)
+
 	return &ImageOptimizerMiddleware{
-		enabled: enabled,
+		enabled:      enabled,
+		fetchQueue:   fetchQueue,
+		processQueue: processQueue,
 	}
 }
 
@@ -133,10 +162,10 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 
 	// Validate output format
 	format = strings.ToLower(format)
-	if !supportedFormats[format] {
+	if !supportedOutputFormats[format] {
 		// output formats as string, comma separated
-		outputFormats := make([]string, 0, len(supportedFormats))
-		for format := range supportedFormats {
+		outputFormats := make([]string, 0, len(supportedOutputFormats))
+		for format := range supportedOutputFormats {
 			outputFormats = append(outputFormats, format)
 		}
 		outputFormatsString := strings.Join(outputFormats, ", ")
@@ -189,6 +218,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		},
 	}
 
+	logger.Debug("Image Optimizer - Fetching image from %s", parsedURL.String())
 	// Fetch the image
 	resp, err := client.Get(parsedURL.String())
 	if err != nil {
@@ -203,31 +233,37 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		return
 	}
 
+	// Wait for an available slot in the fetch queue
+	// before we try to fetch the image.
+	select {
+	case m.fetchQueue <- struct{}{}:
+		// Got a slot, fetch the image
+	case <-ctx.Request.Context().Done():
+		// Request was cancelled or connection was closed
+		// Just return without error as the client is no longer waiting for the response
+		return
+	}
+
 	// Check content length
 	contentLength := resp.Header.Get(server.HeaderContentLength)
 	if contentLength != "" {
 		// Check if the content length is too large
 		contentLengthInt, err := strconv.Atoi(contentLength)
 		if err == nil && contentLengthInt > maxImageSize {
-			ctx.Error(fmt.Sprintf("The response content-length header exceeds maximum limit of %d bytes", maxImageSize), http.StatusBadRequest)
+			ctx.Error(fmt.Sprintf("The response content-length header exceeds maximum limit of %s", utils.FormatBytes(uint64(maxImageSize))), http.StatusBadRequest)
+			func() { <-m.fetchQueue }() // Release the fetch slot
 			return
 		}
 	}
 
+	// Release the fetch slot
+	func() { <-m.fetchQueue }()
+
+	// Return error if the resp was cancelled or connection was closed
 	// Read the image data after we are sure it's an image and it fits into the max image size limit
 	// Use LimitReader to ensure we don't read more than maxImageSize + 1 bytes
 	// This protects against someone abusing the service to fetch massive files
-	imageData, err := io.ReadAll(io.LimitReader(resp.Body, maxImageSize+1))
-	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to read image data: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Check if we hit the size limit
-	if len(imageData) > maxImageSize {
-		ctx.Error(fmt.Sprintf("Image size exceeds maximum limit of %d bytes", maxImageSize), http.StatusBadRequest)
-		return
-	}
+	limitedReader := io.LimitReader(resp.Body, maxImageSize+1)
 
 	// If the Image Optimizer is disabled or the image type is an SVG,
 	// just return the original image unchanged, so it still works locally even without the libvips installed.
@@ -237,7 +273,15 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
 		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s", enabled, urlStr))
 		ctx.Response.Status = http.StatusOK
-		ctx.Response.Body = imageData
+
+		// Enable streaming for the response
+		ctx.Response.EnableStreaming()
+
+		// Stream the image data directly to the response
+		if _, err := io.Copy(ctx.Response, limitedReader); err != nil {
+			ctx.Error(fmt.Sprintf("Failed to stream image: %v", err), http.StatusInternalServerError)
+			return
+		}
 		return
 	}
 
@@ -261,16 +305,55 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		return
 	}
 
-	// Load the image with vips
-	image, err := vips.LoadImage(imageData)
+	// Wait for an available slot in the process queue
+	// before we start to fetch response body and process the image.
+	select {
+	case m.processQueue <- struct{}{}:
+		// Got a slot, process the image
+		defer func() { <-m.processQueue }() // Release the slot when we are done
+	case <-ctx.Request.Context().Done():
+		// Request was cancelled or connection was closed
+		// Just return without error as the client is no longer waiting for the response
+		return
+	}
+
+	// We stream the fetched image directly to tmp file, so we dont need to hold it whole in memory
+	// until VIPS worker picks up the task.
+	srcImageFilename := fmt.Sprintf("/tmp/image-optimizer-src-%s.%s", uuid.New().String(), format)
+	srcImageFile, err := os.Create(srcImageFilename)
+	if err != nil {
+		ctx.Error(fmt.Sprintf("Failed to create temporary srcImageFile: %v", err), http.StatusInternalServerError)
+		return
+	}
+	// Always remove the tmp file after we are done
+	defer os.Remove(srcImageFilename)
+
+	// Run VIPS thread shutdown when we are done or if we get an error
+	defer vips.ThreadShutdown()
+	defer vips.MallocTrim()
+
+	// Stream the image to the tmp file
+	if _, err := io.Copy(srcImageFile, limitedReader); err != nil {
+		ctx.Error(fmt.Sprintf("Failed to stream image: %v", err), http.StatusInternalServerError)
+		return
+	}
+	srcImageFile.Close()
+
+	// Stream the image data directly to libvips tmp file
+	// instead of loading it whole into memory.
+	srcImage, err := vips.LoadImageFromFile(srcImageFilename)
 	if err != nil {
 		ctx.Error(fmt.Sprintf("Failed to load image: %v", err), http.StatusBadRequest)
 		return
 	}
+	// Ensure the image is freed when we're done.
+	// libvips memory is managed manually by dummy glib reference counting and Golang garbage collector doesn't know about it.
+	// If we don't free the image, it will stay in memory forever and cause memory leaks.
+	defer srcImage.Free()
 
 	// Get source image dimensions
-	srcWidth := vips.GetImageWidth(image)
-	srcHeight := vips.GetImageHeight(image)
+	srcWidth := vips.GetImageWidth(srcImage)
+	srcHeight := vips.GetImageHeight(srcImage)
 	srcFormat := resp.Header.Get(server.HeaderContentType)
 	srcFormat = strings.ToLower(srcFormat)
 
@@ -317,33 +400,43 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	if targetWidth != srcWidth || targetHeight != srcHeight {
 		// Calculate scale factor for resize
 		scale := float64(targetWidth) / float64(srcWidth)
-		resizedImage, err := vips.ResizeImage(image, scale)
+		resizedImage, err := vips.ResizeImage(srcImage, scale)
 		if err != nil {
 			ctx.Error(fmt.Sprintf("Failed to resize image: %v", err), http.StatusInternalServerError)
 			return
 		}
-		image = resizedImage
+		defer resizedImage.Free()
+		srcImage = resizedImage
 	}
 
-	// Export with specified quality
-	outputData, err := vips.SaveImage(image, format, qualityInt)
-	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to export image: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Calculate optimization duration
-	duration := time.Since(startTime)
-
-	// Set response headers
+	// Export image to the specified format
 	ctx.Response.Headers.Set(server.HeaderContentType, "image/"+format)
 	ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
 	ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,srcFormat=%s,format=%s,srcWidth=%d,width=%d,srcHeight=%d,height=%d,duration=%dms",
-		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, duration.Milliseconds()))
+		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, time.Since(startTime).Milliseconds()))
 	ctx.Response.Status = http.StatusOK
 
-	// Write the image data to the response
-	ctx.Response.Body = outputData
+	// Enable streaming for the response
+	ctx.Response.EnableStreaming()
+
+	outImageFilename := fmt.Sprintf("/tmp/image-optimizer-out-%s.%s", uuid.New().String(), format)
+	err = vips.SaveImageToFile(srcImage, outImageFilename, qualityInt)
+	if err != nil {
+		ctx.Error(fmt.Sprintf("Failed to save image: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Start streaming the image from tmp file to client
+	outImageFile, err := os.Open(outImageFilename)
+	if err != nil {
+		ctx.Error(fmt.Sprintf("Failed to open image: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer outImageFile.Close()
+	defer os.Remove(outImageFilename)
+	io.Copy(ctx.Response, outImageFile)
+
+	runtime.GC()
 }
 
 func (m *ImageOptimizerMiddleware) OnResponse(ctx *server.ServerContext, next func()) {

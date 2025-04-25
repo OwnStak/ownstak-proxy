@@ -3,8 +3,8 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = "./tmp/main"
-  cmd = "go build -o ./tmp/main ./src"
+  bin = "./tmp/ownstak-proxy"
+  cmd = "go build -o ./tmp/ownstak-proxy ./src"
   delay = 1000
   exclude_dir = ["tmp", "certs", "dist", "scripts"]
   exclude_file = []

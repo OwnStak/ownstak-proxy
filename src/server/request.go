@@ -10,17 +10,18 @@ import (
 )
 
 type ServerRequest struct {
-	Method     string
-	URL        string
-	Path       string
-	Headers    http.Header
-	Host       string
-	Body       []byte
-	Query      url.Values
-	Protocol   string // HTTP protocol version (e.g., HTTP/1.1, HTTP/2)
-	Scheme     string // URL scheme (http, https)
-	Port       string // Port number
-	RemoteAddr string // Client's IP address and port
+	Method          string
+	URL             string
+	Path            string
+	Headers         http.Header
+	Host            string
+	Body            []byte
+	Query           url.Values
+	Protocol        string // HTTP protocol version (e.g., HTTP/1.1, HTTP/2)
+	Scheme          string // URL scheme (http, https)
+	Port            string // Port number
+	RemoteAddr      string // Client's IP address and port
+	OriginalRequest *http.Request
 }
 
 // NewServerRequest creates a new serverRequest from an http.Request
@@ -121,21 +122,22 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 	headers.Set(HeaderXOwnProxyVersion, constants.Version)
 
 	return &ServerRequest{
-		Method:     r.Method,
-		URL:        r.URL.String(),
-		Path:       r.URL.Path,
-		Host:       host,
-		Headers:    headers,
-		Body:       body,
-		Query:      queryParams,
-		Protocol:   protocol,
-		Scheme:     scheme,
-		Port:       port,
-		RemoteAddr: remoteAddr,
+		Method:          r.Method,
+		URL:             r.URL.String(),
+		Path:            r.URL.Path,
+		Host:            host,
+		Headers:         headers,
+		Body:            body,
+		Query:           queryParams,
+		Protocol:        protocol,
+		Scheme:          scheme,
+		Port:            port,
+		RemoteAddr:      remoteAddr,
+		OriginalRequest: r,
 	}, nil
 }
 
 // Context returns a background context for the request
 func (r *ServerRequest) Context() context.Context {
-	return context.Background()
+	return r.OriginalRequest.Context()
 }

@@ -30,32 +30,45 @@ func (mc *MiddlewareChain) Use(mw Middleware) {
 
 // Execute runs all middlewares in the order they were added
 func (mc *MiddlewareChain) Execute(ctx *ServerContext) {
-	mc.executeChain(mc.middlewares, 0, ctx, func(middleware Middleware, ctx *ServerContext, next func()) {
-		middleware.OnRequest(ctx, next)
-	})
+	// Execute OnRequest middlewares
+	mc.executeChainOnRequest(ctx)
 
-	mc.executeChain(mc.middlewares, 0, ctx, func(middleware Middleware, ctx *ServerContext, next func()) {
-		middleware.OnResponse(ctx, next)
-	})
+	// Execute OnResponse middlewares
+	mc.executeChainOnResponse(ctx)
 }
 
-// executeChain executes a chain of middlewares starting at the given index
-func (mc *MiddlewareChain) executeChain(
-	chain []Middleware,
-	index int,
-	ctx *ServerContext,
-	executor func(Middleware, *ServerContext, func())) {
+// executeChainOnRequest executes OnRequest middlewares in the chain
+func (mc *MiddlewareChain) executeChainOnRequest(ctx *ServerContext) {
+	for index := 0; index < len(mc.middlewares); index++ {
+		current := mc.middlewares[index]
+		// Execute OnRequest with next middleware
+		stop := true
+		current.OnRequest(ctx, func() {
+			// Continue to next middleware
+			stop = false
+		})
 
-	// If we've reached the end of the chain, return
-	if index >= len(chain) {
-		return
+		// If stop flag is set, exit the loop
+		if stop {
+			break
+		}
 	}
+}
 
-	// Get the current middleware
-	current := chain[index]
+// executeChainOnResponse executes OnResponse middlewares in the chain
+func (mc *MiddlewareChain) executeChainOnResponse(ctx *ServerContext) {
+	for index := len(mc.middlewares) - 1; index >= 0; index-- {
+		current := mc.middlewares[index]
+		// Execute OnResponse with next middleware
+		stop := true
+		current.OnResponse(ctx, func() {
+			// Continue to next middleware
+			stop = false
+		})
 
-	// Call the middleware with a next function that calls the next middleware in the chain
-	executor(current, ctx, func() {
-		mc.executeChain(chain, index+1, ctx, executor)
-	})
+		// If stop flag is set, exit the loop
+		if stop {
+			break
+		}
+	}
 }

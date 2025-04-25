@@ -34,7 +34,8 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 	// e.g: 302 Location: https://site-bucket.s3.amazonaws.com/site-125/index.html
 	if redirectURL != "" && (followRedirect == "true" || followRedirect == "1") {
 		logger.Debug("Following redirect to '%s'", redirectURL)
-
+		ctx.Response.Headers.Set(server.HeaderXOwnFollowRedirectUrl, redirectURL)
+		ctx.Response.Headers.Set(server.HeaderXOwnFollowRedirectStatus, fmt.Sprintf("%d", ctx.Response.Status))
 		// Normalize the redirect URL (convert relative to absolute if needed)
 		redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)
 

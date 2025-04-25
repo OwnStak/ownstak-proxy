@@ -126,5 +126,22 @@ func (res *ServerResponse) End() bool {
 	// Write status and body
 	res.ResponseWriter.WriteHeader(res.Status)
 	res.ResponseWriter.Write(res.Body)
+	if flusher, ok := res.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+	res.Clear()
 	return true
+}
+
+// For compatibility with http.ResponseWriter
+func (res *ServerResponse) Header() http.Header {
+	return res.Headers
+}
+
+// For compatibility with http.ResponseWriter
+func (res *ServerResponse) WriteHeader(status int) {
+	if status == 0 {
+		status = http.StatusOK
+	}
+	res.Status = status
 }

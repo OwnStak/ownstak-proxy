@@ -19,16 +19,18 @@ const (
 	HeaderTransferEncoding = "Transfer-Encoding"
 
 	// Custom OwnStak Proxy headers
-	HeaderXOwnPrefix            = "X-Own-"
-	HeaderXOwnProxy             = HeaderXOwnPrefix + "Proxy"
-	HeaderXOwnProxyVersion      = HeaderXOwnPrefix + "Proxy-Version"
-	HeaderXOwnFollowRedirect    = HeaderXOwnPrefix + "Follow-Redirect"
-	HeaderXOwnLambdaName        = HeaderXOwnPrefix + "Lambda-Name"
-	HeaderXOwnLambdaRegion      = HeaderXOwnPrefix + "Lambda-Region"
-	HeaderXOwnLambdaTime        = HeaderXOwnPrefix + "Lambda-Time"
-	HeaderXOwnImageOptimizer    = HeaderXOwnPrefix + "Image-Optimizer"
-	HeaderXOwnImageOptimizError = HeaderXOwnPrefix + "Image-Optimizer-Error"
-	HeaderXOwnLambdaMode        = HeaderXOwnPrefix + "Lambda-Mode" // sync or async
+	HeaderXOwnPrefix               = "X-Own-"
+	HeaderXOwnProxy                = HeaderXOwnPrefix + "Proxy"
+	HeaderXOwnProxyVersion         = HeaderXOwnPrefix + "Proxy-Version"
+	HeaderXOwnFollowRedirect       = HeaderXOwnPrefix + "Follow-Redirect"
+	HeaderXOwnFollowRedirectUrl    = HeaderXOwnPrefix + "Follow-Redirect-Url"
+	HeaderXOwnFollowRedirectStatus = HeaderXOwnPrefix + "Follow-Redirect-Status"
+	HeaderXOwnLambdaName           = HeaderXOwnPrefix + "Lambda-Name"
+	HeaderXOwnLambdaRegion         = HeaderXOwnPrefix + "Lambda-Region"
+	HeaderXOwnLambdaTime           = HeaderXOwnPrefix + "Lambda-Time"
+	HeaderXOwnImageOptimizer       = HeaderXOwnPrefix + "Image-Optimizer"
+	HeaderXOwnImageOptimizError    = HeaderXOwnPrefix + "Image-Optimizer-Error"
+	HeaderXOwnLambdaMode           = HeaderXOwnPrefix + "Lambda-Mode" // sync or async
 )
 
 // Content type constants

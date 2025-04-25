@@ -16,6 +16,12 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
 - [ ] Basic logging
 - [ ] Basic metrics
 
+## Internal endpoints
+All internal endpoints are prefixed with /__internal__/ to prevent collisions with user-facing routes. Following internal endpoints are available:
+- `/__internal__/health` - Healthcheck middleware endpoint. Returns a 200 OK response when the server is up and running.
+- `/__internal__/info` - Returns useful runtime information about the server instance, such as RSS (memory usage), version, platform, etc...
+- `/__internal__/image` - Image Optimizer endpoint. Allows to optimize images hosted on the same domain.
+
 ## Requirements
 - **GoLang 1.22+**
 - **glib/glibc/libc6-compat** - *Usually it's part of the system. Just minimal Alpine Linux images don't have it.*
@@ -64,7 +70,7 @@ sudo apt-get install libvips libc6
 ```
 
 If `./lib` folder is empty for you, you can download binaries by running `./scripts/install-libvips.sh`.
-For libvips debugging, set `DEBUG_VIPS=true` env variable.
+For libvips debugging, set `VIPS_DEBUG=true` env variable.
 
 ## Development
 Just run the following command to build the app and start the development server. 
