@@ -118,7 +118,7 @@ func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func())
 	}
 
 	// Only process requests to the internal info path
-	if ctx.Request.Path != "/__internal__/info" {
+	if ctx.Request.Path != constants.InternalPathPrefix+"/info" {
 		// Not our path, continue to the next middleware
 		next()
 		return

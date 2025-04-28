@@ -20,7 +20,7 @@ func main() {
 		Use(middlewares.NewRequestIdMiddleware()).
 		Use(middlewares.NewServerInfoMiddleware()).
 		Use(middlewares.NewImageOptimizerMiddleware()).
-		Use(middlewares.NewAWSLambdaMiddleware()).
 		Use(middlewares.NewFollowRedirectMiddleware()).
+		Use(middlewares.NewAWSLambdaMiddleware()).
 		Start()
 }

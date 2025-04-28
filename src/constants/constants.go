@@ -8,4 +8,7 @@ var (
 	Version    = "0.0.0"
 	ConsoleURL = "https://console-dev.ownstak.com"
 	Mode       = "development" // "development" or "production" (boolean would be better, but linker doesn't seem to support it with -X flag)
+	// The prefix all our internal endpoints.
+	// E.g. /__ownstak__/health
+	InternalPathPrefix = "/__ownstak__"
 )

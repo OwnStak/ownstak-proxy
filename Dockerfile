@@ -8,7 +8,7 @@ ENV DIST_NAME=$DIST_NAME
 WORKDIR /dist
 # Install vips package, so we have all its dependencies but we'll replace it with our own version in next step,
 # to make sure we always use the exact same lib as locally.
-RUN apk add --no-cache vips libc6-compat
+RUN apk add --no-cache vips libc6-compat gcompat musl-dev
 
 # Copy and keep only the libs for the current platform to reduce the image size
 # NOTE: Do this in single RUN so it's in single layer

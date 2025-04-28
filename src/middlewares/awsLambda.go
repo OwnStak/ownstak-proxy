@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // API Gateway v2 JSON payload structure
@@ -80,7 +81,8 @@ type AWSLambdaMiddleware struct {
 	awsConfig    *aws.Config
 	lambdaClient *lambda.Client
 	orgsClient   *organizations.Client
-	accountCache map[string]string // Cache of account name to ID
+	stsClient    *sts.Client
+	accountId    string
 }
 
 func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
@@ -88,6 +90,12 @@ func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
 		logger.Warn("Disabling AWS Lambda middleware - AWS credentials not found.")
 		return nil
+	}
+
+	// Use the AWS_ACCOUNT_ID environment variable if set
+	accountId := os.Getenv("AWS_ACCOUNT_ID")
+	if accountId == "" {
+		logger.Warn("AWS_ACCOUNT_ID environment variable not set - using caller identity.")
 	}
 
 	// Set default region
@@ -104,27 +112,37 @@ func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 
 	lambdaClient := lambda.NewFromConfig(awsConfig)
 	orgsClient := organizations.NewFromConfig(awsConfig)
+	stsClient := sts.NewFromConfig(awsConfig)
 
 	return &AWSLambdaMiddleware{
 		awsConfig:    &awsConfig,
 		lambdaClient: lambdaClient,
 		orgsClient:   orgsClient,
-		accountCache: make(map[string]string),
+		stsClient:    stsClient,
+		accountId:    accountId,
 	}
 }
 
 // OnRequest processes the request to invoke Lambda if appropriate
 func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+	// Check the host header
+	if strings.TrimSpace(ctx.Request.Host) == "" {
+		errorMessage := fmt.Sprintf("The host header or %s header is required.\r\n", server.HeaderXOwnHost)
+		ctx.Error(errorMessage, server.StatusBadRequest)
+		return
+	}
+
 	// Parse hostname parts
 	// e.g: site-125.aws-2-account.ownstak.link
 	// site-125 is the AWS Lambda function readable name
 	// aws-2-account is the AWS account name
 	// ownstak.link is the domain name
 	hostParts := strings.Split(ctx.Request.Host, ".")
-	if len(hostParts) < 2 {
+	if len(hostParts) < 3 {
 		errorMessage := fmt.Sprintf("Invalid hostname format '%s'.\r\n", ctx.Request.Host)
-		errorMessage += "The expected format is '{lambda-name}.{aws-account-name}.{domain-name}.'\r\n"
-		errorMessage += "e.g: site-125.aws-2-account.ownstak.link\r\n"
+		errorMessage += "The expected format is '{project-slug}-{environment-slug}-{optional-deployment-id}.{cloudbackend-slug}.{organization-slug}.{domain-name}.'\r\n"
+		errorMessage += "e.g: nextjs-app-prod-123.aws-primary.my-org.ownstak.link\r\n"
+		errorMessage += "e.g: nextjs-app-prod.aws-primary.my-org.ownstak.link\r\n"
 		ctx.Error(errorMessage, server.StatusBadRequest)
 		return
 	}
@@ -133,21 +151,27 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	// That's why we hash the readable name by sha256 to make sure it's always 64 characters at max and unique.
 	lambdaRedableName := hostParts[0] // e.g: site-125
 	lambdaName := m.getLambdaName(lambdaRedableName)
-	accountName := hostParts[1]
 
-	// Get AWS account ID
-	accountID, err := m.getAccountID(context.Background(), accountName)
-	if err != nil {
-		errorMessage := fmt.Sprintf("Failed to get AWS account ID: %v", err)
-		ctx.Error(errorMessage, server.StatusAccountNotFound)
-		return
+	// Get the AWS account ID from caller identity
+	// if not set through AWS_ACCOUNT_ID environment variable
+	if m.accountId == "" {
+		// Get the AWS account ID from caller identity
+		accountId, err := m.getAccountIdFromCaller(context.Background())
+		if err != nil {
+			errorMessage := fmt.Sprintf("Failed to get AWS account ID: %v", err)
+			ctx.Error(errorMessage, server.StatusAccountNotFound)
+			return
+		}
+
+		// Store the account ID for all other invocations
+		m.accountId = accountId
 	}
 
 	// Construct the Lambda ARN
-	lambdaArn := fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s", m.awsConfig.Region, accountID, lambdaName)
+	lambdaArn := fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s", m.awsConfig.Region, m.accountId, lambdaName)
 
 	// Create API Gateway v2 JSON event
-	event, err := m.createApiGatewayEvent(ctx, accountID)
+	event, err := m.createApiGatewayEvent(ctx, m.accountId)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Failed to create API Gateway event: %v", err)
 		ctx.Error(errorMessage, server.StatusInternalServerError)
@@ -160,7 +184,12 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		asyncMode = true
 	}
 	// Invoke Lambda function
+	invocationStartTime := time.Now()
 	response, err := m.invokeLambda(context.Background(), lambdaArn, event, asyncMode)
+	invocationDuration := time.Since(invocationStartTime)
+
+	// Set Lambda invocation duration header
+	ctx.Response.Headers.Set(server.HeaderXOwnLambdaDuration, invocationDuration.String())
 
 	// Handle invocation errors
 	if err != nil {
@@ -246,33 +275,18 @@ func (m *AWSLambdaMiddleware) getLambdaName(lambdaReadableName string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// getAccountID retrieves an AWS account ID by account name
-func (m *AWSLambdaMiddleware) getAccountID(ctx context.Context, accountName string) (string, error) {
-	// Check cache first
-	if id, exists := m.accountCache[accountName]; exists {
-		return id, nil
+// getAccountIdFromCaller retrieves the AWS account ID from the caller identity
+func (m *AWSLambdaMiddleware) getAccountIdFromCaller(ctx context.Context) (string, error) {
+	// Get the caller identity using STS
+	input := &sts.GetCallerIdentityInput{}
+	result, err := m.stsClient.GetCallerIdentity(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("failed to get AWS caller identity: %v", err)
 	}
 
-	// If we couldn't extract an ID, try to look it up via Organizations API
-	// Note: This requires proper permissions
-	input := &organizations.ListAccountsInput{}
-	paginator := organizations.NewListAccountsPaginator(m.orgsClient, input)
-
-	for paginator.HasMorePages() {
-		output, err := paginator.NextPage(ctx)
-		if err != nil {
-			return "", fmt.Errorf("failed to list AWS accounts: %v", err)
-		}
-
-		for _, account := range output.Accounts {
-			if strings.EqualFold(accountName, *account.Name) {
-				m.accountCache[accountName] = *account.Id
-				return *account.Id, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("could not find AWS account ID for name '%s'", accountName)
+	// Return the account ID
+	accountID := *result.Account
+	return accountID, nil
 }
 
 // createApiGatewayEvent creates an API Gateway v2 JSON event from the request
@@ -285,9 +299,6 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 		// API Gateway normalizes headers to lowercase
 		headers[strings.ToLower(key)] = values[0]
 	}
-
-	//headers[server.HeaderXOwnProxy] = "true"
-	//headers[server.HeaderXOwnProxyVersion] = constants.Version
 
 	// Extract query parameters and handle duplicates
 	queryParams := make(map[string]string)
@@ -343,7 +354,7 @@ func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, a
 		QueryStringParameters: queryParams,
 		RequestContext: EventRequestContext{
 			AccountId:    accountID,
-			ApiId:        "ownstak-proxy",
+			ApiId:        constants.AppName,
 			DomainName:   req.Host,
 			DomainPrefix: "", // Default to an empty string
 			Http: HttpDetails{

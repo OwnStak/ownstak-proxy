@@ -32,17 +32,18 @@ func NewServerRequest(r *http.Request) (*ServerRequest, error) {
 	}
 	defer r.Body.Close()
 
-	// If the forwarded host is set, use it instead of the original host.
-	// e.g: https://site-125.aws-2-account.ownstak.link
-	// e.g: https://site-125.aws-2-account.ownstak.link,https://site-125.aws-3-account.ownstak.link
-	host := r.Host
-	if forwardedHost := r.Header.Get(HeaderXForwardedHost); forwardedHost != "" {
-		// If there are multiple forwarded hosts, use the last one
-		if commaIdx := strings.LastIndex(forwardedHost, ","); commaIdx != -1 {
-			host = strings.TrimSpace(forwardedHost[commaIdx+1:])
-		} else {
-			host = forwardedHost
-		}
+	// Get the host header from X-Own-Host first, then try Host header
+	// NOTE: Some CDN providers such as Cloudflare doesn't allow to change the Host header to any values.
+	// It often requires at least Enterprise tier but setting any other is allowed in in the free tier.
+	// So we use X-Own-Host header to pass the host to the proxy and then use it in the response.
+	// e.g: https://<project-slug>.<environment-slug>-<optional-deployment-id>.<cloud-backend-slug>.<organization-slug>.ownstak.link
+	// e.g: https://nextjs-app-prod-123.aws-primary.my-org.ownstak.link
+	host := r.Header.Get(HeaderXOwnHost)
+	if host == "" {
+		host = r.Header.Get(HeaderHost)
+	}
+	if host == "" {
+		host = r.Host
 	}
 
 	// Parse query parameters directly from the URL

@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/server"
 )
 
@@ -12,7 +13,7 @@ func NewHealthcheckMiddleware() *HealthcheckMiddleware {
 }
 
 func (m *HealthcheckMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
-	if ctx.Request.Path == "/__internal__/health" {
+	if ctx.Request.Path == constants.InternalPathPrefix+"/health" {
 		ctx.Response.Status = 200
 		ctx.Response.Body = []byte("OK")
 		ctx.Response.Headers.Set(server.HeaderContentType, "text/plain")

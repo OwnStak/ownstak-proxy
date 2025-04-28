@@ -133,7 +133,7 @@ func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
 
 func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
 	// Run the Image Optimizer middleware only on below path
-	if ctx.Request.Path != "/__internal__/image" {
+	if ctx.Request.Path != constants.InternalPathPrefix+"/image" {
 		next()
 		return
 	}
@@ -188,8 +188,8 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	}
 
 	// Check if the URL is trying to fetch from /__internal__ path
-	if strings.Contains(parsedURL.Path, "/__internal__") {
-		ctx.Error("Fetching images from /__internal__ path is not allowed", http.StatusBadRequest)
+	if strings.Contains(parsedURL.Path, constants.InternalPathPrefix) {
+		ctx.Error("Fetching images from "+constants.InternalPathPrefix+" path is not allowed", http.StatusBadRequest)
 		return
 	}
 

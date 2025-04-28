@@ -1,6 +1,9 @@
 package server
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
@@ -101,6 +104,17 @@ func (res *ServerResponse) Clear() {
 	res.Status = http.StatusOK
 	res.Headers = make(http.Header)
 	res.Body = []byte{}
+	res.Ended = false
+	res.Streaming = false
+	res.StreamingStarted = false
+}
+
+func (res *ServerResponse) ClearHeaders() {
+	res.Headers = make(http.Header)
+}
+
+func (res *ServerResponse) ClearBody() {
+	res.Body = []byte{}
 }
 
 // Finishes the response and sends it to the client
@@ -138,10 +152,86 @@ func (res *ServerResponse) Header() http.Header {
 	return res.Headers
 }
 
+func (res *ServerResponse) AppendHeader(key, value string) {
+	existingValues := res.Headers.Get(key)
+	if existingValues != "" {
+		res.Headers.Set(key, existingValues+","+value)
+	} else {
+		res.Headers.Set(key, value)
+	}
+}
+
 // For compatibility with http.ResponseWriter
 func (res *ServerResponse) WriteHeader(status int) {
 	if status == 0 {
 		status = http.StatusOK
 	}
 	res.Status = status
+}
+
+func (res *ServerResponse) Serialize() string {
+	serialized := make(map[string]interface{})
+	serialized["status"] = res.Status
+	serialized["headers"] = res.Headers
+
+	// Convert body to base64 string for JSON serialization
+	serialized["body"] = base64.StdEncoding.EncodeToString(res.Body)
+
+	data, err := json.Marshal(serialized)
+	if err != nil {
+		// Return empty byte slice on error
+		return ""
+	}
+	return string(data)
+}
+
+func DeserializeServerResponse(data string) (*ServerResponse, error) {
+	if data == "" {
+		return nil, fmt.Errorf("empty data provided for deserialization")
+	}
+
+	var serialized map[string]interface{}
+	if err := json.Unmarshal([]byte(data), &serialized); err != nil {
+		return nil, fmt.Errorf("invalid JSON data: %v", err)
+	}
+
+	res := NewServerResponse()
+
+	// Handle status
+	if status, ok := serialized["status"].(float64); ok {
+		res.Status = int(status)
+	} else {
+		return nil, fmt.Errorf("invalid or missing status field")
+	}
+
+	// Handle headers
+	if headers, ok := serialized["headers"].(map[string]interface{}); ok {
+		res.Headers = make(http.Header)
+		for key, value := range headers {
+			if values, ok := value.([]interface{}); ok {
+				for _, v := range values {
+					if str, ok := v.(string); ok {
+						res.Headers.Add(key, str)
+					}
+				}
+			} else if str, ok := value.(string); ok {
+				res.Headers.Set(key, str)
+			}
+		}
+	} else {
+		return nil, fmt.Errorf("invalid or missing headers field")
+	}
+
+	// Handle body
+	if bodyStr, ok := serialized["body"].(string); ok {
+		body, err := base64.StdEncoding.DecodeString(bodyStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode body: %v", err)
+		}
+		res.Body = body
+	} else {
+		return nil, fmt.Errorf("invalid or missing body field")
+	}
+
+	return res, nil
 }

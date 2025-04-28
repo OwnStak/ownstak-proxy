@@ -38,12 +38,15 @@ func (mc *MiddlewareChain) Execute(ctx *ServerContext) {
 }
 
 // executeChainOnRequest executes OnRequest middlewares in the chain
+// NOTE: This could be recursion, but debugging for with index is way easier
+// in profiler
 func (mc *MiddlewareChain) executeChainOnRequest(ctx *ServerContext) {
 	for index := 0; index < len(mc.middlewares); index++ {
-		current := mc.middlewares[index]
+		currentMiddleware := mc.middlewares[index]
+
 		// Execute OnRequest with next middleware
 		stop := true
-		current.OnRequest(ctx, func() {
+		currentMiddleware.OnRequest(ctx, func() {
 			// Continue to next middleware
 			stop = false
 		})
@@ -58,10 +61,11 @@ func (mc *MiddlewareChain) executeChainOnRequest(ctx *ServerContext) {
 // executeChainOnResponse executes OnResponse middlewares in the chain
 func (mc *MiddlewareChain) executeChainOnResponse(ctx *ServerContext) {
 	for index := len(mc.middlewares) - 1; index >= 0; index-- {
-		current := mc.middlewares[index]
+		currentMiddleware := mc.middlewares[index]
+
 		// Execute OnResponse with next middleware
 		stop := true
-		current.OnResponse(ctx, func() {
+		currentMiddleware.OnResponse(ctx, func() {
 			// Continue to next middleware
 			stop = false
 		})

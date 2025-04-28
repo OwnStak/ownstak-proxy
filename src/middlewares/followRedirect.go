@@ -34,10 +34,6 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 	// e.g: 302 Location: https://site-bucket.s3.amazonaws.com/site-125/index.html
 	if redirectURL != "" && (followRedirect == "true" || followRedirect == "1") {
 		logger.Debug("Following redirect to '%s'", redirectURL)
-		ctx.Response.Headers.Set(server.HeaderXOwnFollowRedirectUrl, redirectURL)
-		ctx.Response.Headers.Set(server.HeaderXOwnFollowRedirectStatus, fmt.Sprintf("%d", ctx.Response.Status))
-		// Normalize the redirect URL (convert relative to absolute if needed)
-		redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)
 
 		// Preserve our internal headers from existing response
 		// in the final response for debugging purposes
@@ -47,8 +43,27 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 				internalHeaders[k] = v
 			}
 		}
-		ctx.Response.Clear()
-		ctx.Response.Headers = internalHeaders
+
+		ctx.Response.ClearBody()
+		// Remove headers that can cause issues after merging
+		ctx.Response.Headers.Del(server.HeaderLocation)
+		ctx.Response.Headers.Del(server.HeaderContentLength)
+		ctx.Response.Headers.Del(server.HeaderContentType)
+		ctx.Response.Headers.Del(server.HeaderContentEncoding)
+		ctx.Response.Headers.Del(server.HeaderTransferEncoding)
+		ctx.Response.Headers.Del(server.HeaderContentDisposition)
+
+		// If X-Own-Merge-Headers is not true, clear all headers from the lambda
+		// response and keep only our internal headers
+		if ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders) != "true" {
+			ctx.Response.ClearHeaders()
+			ctx.Response.Headers = internalHeaders
+		}
+
+		ctx.Response.Headers.Set(server.HeaderXOwnFollowedRedirectUrl, redirectURL)
+		ctx.Response.Headers.Set(server.HeaderXOwnFollowedRedirectStatus, fmt.Sprintf("%d", ctx.Response.Status))
+		// Normalize the redirect URL (convert relative to absolute if needed)
+		redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)
 
 		// Create a custom HTTP client with redirect policy
 		client := &http.Client{
