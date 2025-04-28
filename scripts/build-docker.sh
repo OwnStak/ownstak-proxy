@@ -24,7 +24,7 @@ fi
 ./scripts/build.sh
 
 # Build the Docker image
-sudo docker build --build-arg DIST_NAME=$DIST_NAME --build-arg PLATFORM=$PLATFORM --build-arg OS=$CURRENT_OS --build-arg ARCH=$CURRENT_ARCH -t $REGISTRY_URL/$DIST_NAME:$VERSION-next -f Dockerfile .
+sudo docker build --build-arg DIST_NAME=$DIST_NAME --build-arg PLATFORM=$PLATFORM --build-arg OS=$CURRENT_OS --build-arg ARCH=$CURRENT_ARCH -t $REGISTRY_URL/$DIST_NAME:$VERSION-next --progress=plain -f Dockerfile .
 
 echo "✅ Docker image build complete!"
 echo "Image: $REGISTRY_URL/$DIST_NAME:$VERSION-next"

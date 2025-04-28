@@ -22,7 +22,7 @@ defaults:
 jobs:
   release-next:
     name: Build and release
-    timeout-minutes: 5
+    timeout-minutes: 15
     runs-on: [self-hosted, linux, arm64]
     container:
       image: ubuntu:22.04

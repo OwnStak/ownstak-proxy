@@ -336,7 +336,7 @@ func Initialize() error {
 	}
 	vipsConcurrencySet(concurrency)
 
-	maxCacheSize := 0 // disable cache
+	maxCacheSize := 0 // disable operations cache
 	if os.Getenv("VIPS_MAX_CACHE_SIZE") != "" {
 		envMaxCacheSize, err := strconv.Atoi(os.Getenv("VIPS_MAX_CACHE_SIZE"))
 		if err != nil {
@@ -346,7 +346,7 @@ func Initialize() error {
 	}
 	vipsCacheSetMax(maxCacheSize)
 
-	maxCacheMem := 0 // disable cache
+	maxCacheMem := 0 // disable memory cache
 	if os.Getenv("VIPS_MAX_CACHE_MEM") != "" {
 		envMaxCacheMem, err := strconv.Atoi(os.Getenv("VIPS_MAX_CACHE_MEM"))
 		if err != nil {
@@ -370,7 +370,8 @@ func Initialize() error {
 	vipsVersionStr := vipsVersionString()
 	vipsConcurrency := vipsConcurrencyGet()
 
-	logger.Info("VIPS %s initialized successfully (concurrency: %d, max cache size: %d, max cache mem: %d)", vipsVersionStr, vipsConcurrency, vipsCacheGetSize(), vipsCacheGetMaxMem())
+	maxCacheMemHuman := utils.FormatBytes(uint64(maxCacheMem))
+	logger.Info("VIPS %s initialized successfully (concurrency: %d, max cache size: %d, max cache mem: %s)", vipsVersionStr, vipsConcurrency, maxCacheSize, maxCacheMemHuman)
 	initialized = true
 
 	// Import libc. This is needed for malloc_trim to work on all platforms.
@@ -752,10 +753,8 @@ func (img *VipsImage) Free() {
 
 	// Get the parent operation (load operation like VipsForeignLoadJpegBuffer)
 	parent := vipsImageGetParent(img.ptr)
-	if parent != nil {
-		// Unreference the parent operation
-		Unref(parent)
-	}
+	// Unreference the parent operation
+	Unref(parent)
 
 	// Free the image itself
 	Unref(unsafe.Pointer(img.ptr))
@@ -778,10 +777,16 @@ func Free(ptr unsafe.Pointer) {
 }
 
 func Unref(ptr unsafe.Pointer) {
+	if ptr == nil {
+		return
+	}
 	gObjectUnref(ptr)
 }
 
 func UnrefOutputs(ptr unsafe.Pointer) {
+	if ptr == nil {
+		return
+	}
 	vipsObjectUnrefOutputs(ptr)
 }
 

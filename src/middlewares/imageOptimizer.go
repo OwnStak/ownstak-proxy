@@ -84,7 +84,7 @@ const defaultQuality = 60
 
 // Cache control header value for optimized images.
 // Optimized images should be cached "publicly" by the CDN.
-const cacheControl = "public, max-age=31536000"
+const defaultCacheControl = "public, max-age=86400, s-maxage=31536000"
 
 // Supported formats by vips.
 // Can be also used as output formats.
@@ -218,21 +218,6 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		},
 	}
 
-	logger.Debug("Image Optimizer - Fetching image from %s", parsedURL.String())
-	// Fetch the image
-	resp, err := client.Get(parsedURL.String())
-	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to fetch image: %v", err), http.StatusBadRequest)
-		return
-	}
-	defer resp.Body.Close()
-
-	// Check if the response is an image
-	if !strings.HasPrefix(resp.Header.Get(server.HeaderContentType), "image/") {
-		ctx.Error("URL does not point to an image. \r\nServer returned content type: "+resp.Header.Get(server.HeaderContentType), http.StatusBadRequest)
-		return
-	}
-
 	// Wait for an available slot in the fetch queue
 	// before we try to fetch the image.
 	select {
@@ -244,6 +229,34 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		return
 	}
 
+	// Fetch the image
+	fetchStartTime := time.Now()
+	logger.Debug("Image Optimizer - Fetching image from %s", parsedURL.String())
+	resp, err := client.Get(parsedURL.String())
+	if err != nil {
+		ctx.Error(fmt.Sprintf("Failed to fetch image: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer resp.Body.Close()
+	fetchDuration := time.Since(fetchStartTime)
+
+	// Release the fetch slot
+	func() { <-m.fetchQueue }()
+
+	// Check if the response is an image
+	if !strings.HasPrefix(resp.Header.Get(server.HeaderContentType), "image/") {
+		ctx.Error("URL does not point to an image. \r\nServer returned content type: "+resp.Header.Get(server.HeaderContentType), http.StatusBadRequest)
+		return
+	}
+
+	// Use cache-control header from the original image if it exists
+	// otherwise use the default cache-control header for optimized images.
+	// This allows the customers to have different cache-control headers for each image.
+	cacheControl := resp.Header.Get(server.HeaderCacheControl)
+	if cacheControl == "" {
+		cacheControl = defaultCacheControl
+	}
+
 	// Check content length
 	contentLength := resp.Header.Get(server.HeaderContentLength)
 	if contentLength != "" {
@@ -251,13 +264,9 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		contentLengthInt, err := strconv.Atoi(contentLength)
 		if err == nil && contentLengthInt > maxImageSize {
 			ctx.Error(fmt.Sprintf("The response content-length header exceeds maximum limit of %s", utils.FormatBytes(uint64(maxImageSize))), http.StatusBadRequest)
-			func() { <-m.fetchQueue }() // Release the fetch slot
 			return
 		}
 	}
-
-	// Release the fetch slot
-	func() { <-m.fetchQueue }()
 
 	// Return error if the resp was cancelled or connection was closed
 	// Read the image data after we are sure it's an image and it fits into the max image size limit
@@ -271,7 +280,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		// Set response headers and
 		ctx.Response.Headers.Set(server.HeaderContentType, resp.Header.Get(server.HeaderContentType))
 		ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s", enabled, urlStr))
+		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,fetchDuration=%dms", enabled, urlStr, fetchDuration.Milliseconds()))
 		ctx.Response.Status = http.StatusOK
 
 		// Enable streaming for the response
@@ -306,7 +315,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	}
 
 	// Wait for an available slot in the process queue
-	// before we start to fetch response body and process the image.
+	// before we start to process the image.
 	select {
 	case m.processQueue <- struct{}{}:
 		// Got a slot, process the image
@@ -370,10 +379,20 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 
 	aspectRatio := float64(srcWidth) / float64(srcHeight)
 
-	// Calculate target dimensions while preserving aspect ratio
+	// Start with the target dimensions set to provided width and height
 	targetWidth := widthInt
 	targetHeight := heightInt
 
+	// Make sure target dimensions are smaller or equal to source dimensions
+	if targetWidth > srcWidth {
+		targetWidth = srcWidth
+	}
+	if targetHeight > srcHeight {
+		targetHeight = srcHeight
+	}
+
+	// Calculate missing dimensions while preserving aspect ratio
+	// if any of the target dimensions are not provided
 	if targetWidth == 0 && targetHeight == 0 {
 		targetWidth = srcWidth
 		targetHeight = srcHeight
@@ -383,7 +402,9 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		targetHeight = int(float64(targetWidth) * aspectRatio)
 	}
 
-	// If source is larger than max, calculate target dimensions
+	// If source is larger than max allowed dimension,
+	// set target dimensions to max allowed dimension
+	// while preserving aspect ratio
 	if targetHeight > maxDimension || targetWidth > maxDimension {
 		if targetWidth > targetHeight {
 			// Width is larger, limit it to maxDimension
@@ -396,7 +417,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		}
 	}
 
-	// Resize if target dimensions are different from source
+	// Call resize if target dimensions are different from source
 	if targetWidth != srcWidth || targetHeight != srcHeight {
 		// Calculate scale factor for resize
 		scale := float64(targetWidth) / float64(srcWidth)
@@ -412,8 +433,8 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	// Export image to the specified format
 	ctx.Response.Headers.Set(server.HeaderContentType, "image/"+format)
 	ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-	ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,srcFormat=%s,format=%s,srcWidth=%d,width=%d,srcHeight=%d,height=%d,duration=%dms",
-		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, time.Since(startTime).Milliseconds()))
+	ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,srcFormat=%s,format=%s,srcWidth=%d,width=%d,srcHeight=%d,height=%d,fetchDuration=%dms,duration=%dms",
+		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, fetchDuration.Milliseconds(), time.Since(startTime).Milliseconds()))
 	ctx.Response.Status = http.StatusOK
 
 	// Enable streaming for the response
