@@ -147,10 +147,29 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		return
 	}
 
-	// The maximum length of the AWS Lambda name is 64 characters.
-	// That's why we hash the readable name by sha256 to make sure it's always 64 characters at max and unique.
-	lambdaRedableName := hostParts[0] // e.g: site-125
-	lambdaName := m.getLambdaName(lambdaRedableName)
+	// Parse the lambda host part to segments
+	lambdaHost := hostParts[0] // e.g: myproject-prod, myproject-prod-125 etc...
+	lambdaHostParts := strings.Split(lambdaHost, "-")
+	projectSlug := lambdaHostParts[0]     // required project slug
+	environmentSlug := lambdaHostParts[1] // required environment slug
+
+	deploymentId := "" // optional deployment id
+	if len(lambdaHostParts) > 2 {
+		deploymentId = lambdaHostParts[2]
+	}
+
+	// IMPORTANT:
+	// This code and naming convention is used by the OwnStak Console to create the correct Lambda function and alias.
+	// Make sure it's always in sync. We need to add "deployment-" prefix to all lambda aliases because
+	// the alias cannot start with a number. The prefix is not in URL to save bytes in 63 domain segment limit.
+	// See: https://github.com/OwnStak/ownstak-console/blob/main/api/app/services/deployments/aws_deployer.rb#L312
+	lambdaAlias := "current" // defaults to current deployment
+	if deploymentId != "" {
+		lambdaAlias = "deployment-" + deploymentId
+	}
+
+	lambdaReadableName := projectSlug + "-" + environmentSlug // e.g: myproject-prod
+	lambdaName := m.getLambdaName(lambdaReadableName)
 
 	// Get the AWS account ID from caller identity
 	// if not set through AWS_ACCOUNT_ID environment variable
@@ -168,7 +187,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	}
 
 	// Construct the Lambda ARN
-	lambdaArn := fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s", m.awsConfig.Region, m.accountId, lambdaName)
+	lambdaArn := fmt.Sprintf("arn:aws:lambda:%s:%s:function:%s:%s", m.awsConfig.Region, m.accountId, lambdaName, lambdaAlias)
 
 	// Create API Gateway v2 JSON event
 	event, err := m.createApiGatewayEvent(ctx, m.accountId)

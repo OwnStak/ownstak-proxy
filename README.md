@@ -79,7 +79,17 @@ It will automatically rebuild the app when you make changes to the code.
 ./scripts/dev.sh
 ```
 If no certs are provided, it will generate self-signed cert/key/CA pairs for the development server.
-After proxy server starts, you can access the proxy server at [https://site-123.aws-account.localhost:3000](https://site-123.aws-account.localhost:3000)
+After proxy server starts, you can access the proxy server at [http://project-prod-123.aws-primary.org.localhost.ownstak.link:3000](http://project-prod-123.aws-primary.org.localhost.ownstak.link:3000)
+
+### Lambda invocation from localhost
+The upper wildcard link allows you to invoke any (for example: `sha256(project-prod-123)`) deployment lambda in your AWS account and return response.
+The `.localhost.ownstak.link` domain suffix is a special case that always points to your local proxy instance. 
+The production links have just `.ownstak.link` suffix.
+
+The links are in the following format:
+```
+<project>-<environment>-<optional-deployment-id>.<cloud-backend>.<organization>.localhost.ownstak.link
+```
 
 ## Build
 To build the app for the target platforms specified in the `.env` file under `PLATFORMS` variable, run the following command:
