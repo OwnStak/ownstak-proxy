@@ -7,6 +7,7 @@ var (
 	AppName    = "OwnStak Proxy DEV"
 	Version    = "0.0.0"
 	ConsoleURL = "https://console-dev.ownstak.com"
+	SupportURL = "https://ownstak.com/support"
 	Mode       = "development" // "development" or "production" (boolean would be better, but linker doesn't seem to support it with -X flag)
 	// The prefix all our internal endpoints.
 	// E.g. /__ownstak__/health

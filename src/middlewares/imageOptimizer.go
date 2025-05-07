@@ -156,7 +156,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	}
 
 	if urlStr == "" {
-		ctx.Error("URL parameter is required", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: URL parameter is required", http.StatusBadRequest)
 		return
 	}
 
@@ -169,27 +169,27 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 			outputFormats = append(outputFormats, format)
 		}
 		outputFormatsString := strings.Join(outputFormats, ", ")
-		ctx.Error(fmt.Sprintf("Unsupported output format: %s. Supported formats are: %s", format, outputFormatsString), http.StatusBadRequest)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Unsupported output format: %s. Supported formats are: %s", format, outputFormatsString), http.StatusBadRequest)
 		return
 	}
 
 	// Get current host
 	currentHost := ctx.Request.Host
 	if currentHost == "" {
-		ctx.Error("Could not determine current host", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: Could not determine current host", http.StatusBadRequest)
 		return
 	}
 
 	// Parse the target URL
 	parsedURL, parseErr := url.Parse(urlStr)
 	if parseErr != nil {
-		ctx.Error(fmt.Sprintf("Invalid URL: %v", parseErr), http.StatusBadRequest)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Invalid URL: %v", parseErr), http.StatusBadRequest)
 		return
 	}
 
 	// Check if the URL is trying to fetch from /__internal__ path
 	if strings.Contains(parsedURL.Path, constants.InternalPathPrefix) {
-		ctx.Error("Fetching images from "+constants.InternalPathPrefix+" path is not allowed", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: Fetching images from "+constants.InternalPathPrefix+" path is not allowed", http.StatusBadRequest)
 		return
 	}
 
@@ -205,7 +205,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	// For example by setting DNS records images.example.com to your server and example.com to this proxy.
 	// This feature is allowed in development mode, so we can easily test it locally when runnning ./scripts/dev.sh.
 	if parsedURL.Host != ctx.Request.Host && constants.Mode != "development" {
-		ctx.Error("URL must be from the same domain. Fetching images from external domains is not allowed in the production mode.", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: URL must be from the same domain. Fetching images from external domains is not allowed in the production mode.", http.StatusBadRequest)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	logger.Debug("Image Optimizer - Fetching image from %s", parsedURL.String())
 	resp, err := client.Get(parsedURL.String())
 	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to fetch image: %v", err), http.StatusBadRequest)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to fetch image: %v", err), http.StatusBadRequest)
 		return
 	}
 	defer resp.Body.Close()
@@ -245,7 +245,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 
 	// Check if the response is an image
 	if !strings.HasPrefix(resp.Header.Get(server.HeaderContentType), "image/") {
-		ctx.Error("URL does not point to an image. \r\nServer returned content type: "+resp.Header.Get(server.HeaderContentType), http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: URL does not point to an image. \r\nServer returned content type: "+resp.Header.Get(server.HeaderContentType), http.StatusBadRequest)
 		return
 	}
 
@@ -263,7 +263,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		// Check if the content length is too large
 		contentLengthInt, err := strconv.Atoi(contentLength)
 		if err == nil && contentLengthInt > maxImageSize {
-			ctx.Error(fmt.Sprintf("The response content-length header exceeds maximum limit of %s", utils.FormatBytes(uint64(maxImageSize))), http.StatusBadRequest)
+			ctx.Error(fmt.Sprintf("Image Optimizer failed: The response content-length header exceeds maximum limit of %s", utils.FormatBytes(uint64(maxImageSize))), http.StatusBadRequest)
 			return
 		}
 	}
@@ -288,7 +288,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 
 		// Stream the image data directly to the response
 		if _, err := io.Copy(ctx.Response, limitedReader); err != nil {
-			ctx.Error(fmt.Sprintf("Failed to stream image: %v", err), http.StatusInternalServerError)
+			ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to stream image: %v", err), http.StatusInternalServerError)
 			return
 		}
 		return
@@ -297,20 +297,20 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	// Convert quality to integer
 	qualityInt, err := strconv.Atoi(quality)
 	if err != nil || qualityInt < 1 || qualityInt > 100 {
-		ctx.Error("Quality must be a number between 1 and 100", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: Quality must be a number between 1 and 100", http.StatusBadRequest)
 		return
 	}
 
 	// Convert dimensions to integers
 	widthInt, err := strconv.Atoi(width)
 	if err != nil || widthInt < 0 {
-		ctx.Error("Width must be a positive number", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: Width must be a positive number", http.StatusBadRequest)
 		return
 	}
 
 	heightInt, err := strconv.Atoi(height)
 	if err != nil || heightInt < 0 {
-		ctx.Error("Height must be a positive number", http.StatusBadRequest)
+		ctx.Error("Image Optimizer failed: Height must be a positive number", http.StatusBadRequest)
 		return
 	}
 
@@ -331,7 +331,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	srcImageFilename := fmt.Sprintf("/tmp/image-optimizer-src-%s.%s", uuid.New().String(), format)
 	srcImageFile, err := os.Create(srcImageFilename)
 	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to create temporary srcImageFile: %v", err), http.StatusInternalServerError)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to create temporary srcImageFile: %v", err), http.StatusInternalServerError)
 		return
 	}
 	// Always remove the tmp file after we are done
@@ -343,7 +343,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 
 	// Stream the image to the tmp file
 	if _, err := io.Copy(srcImageFile, limitedReader); err != nil {
-		ctx.Error(fmt.Sprintf("Failed to stream image: %v", err), http.StatusInternalServerError)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to stream image: %v", err), http.StatusInternalServerError)
 		return
 	}
 	srcImageFile.Close()
@@ -352,7 +352,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	// instead of loading it whole into memory.
 	srcImage, err := vips.LoadImageFromFile(srcImageFilename)
 	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to load image: %v", err), http.StatusBadRequest)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to load image: %v", err), http.StatusBadRequest)
 		return
 	}
 	// Ensure the image is freed when we're done.
@@ -373,7 +373,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	}
 
 	if srcWidth == 0 || srcHeight == 0 {
-		ctx.Error("Failed to get image dimensions", http.StatusInternalServerError)
+		ctx.Error("Image Optimizer failed: Failed to get image dimensions", http.StatusInternalServerError)
 		return
 	}
 
