@@ -60,7 +60,7 @@ func (mc *MiddlewareChain) executeChainOnRequest(ctx *ServerContext) {
 
 // executeChainOnResponse executes OnResponse middlewares in the chain
 func (mc *MiddlewareChain) executeChainOnResponse(ctx *ServerContext) {
-	for index := len(mc.middlewares) - 1; index >= 0; index-- {
+	for index := 0; index < len(mc.middlewares); index++ {
 		currentMiddleware := mc.middlewares[index]
 
 		// Execute OnResponse with next middleware

@@ -20,10 +20,14 @@ func (m *RequestIdMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		requestID = uuid.New().String()
 		ctx.Request.Headers.Set(server.HeaderRequestID, requestID)
 	}
+	// Set request ID to res in the request handle phase, so other middlewares can break chain, exit early
+	// and stream the response directly to the client without waiting for the response handle phase
+	ctx.Response.Headers.Set(server.HeaderRequestID, requestID)
 	next()
 }
 
 func (m *RequestIdMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
+	// Set request ID to res in the response send phase for middlewares that overrides the whole response
 	ctx.Response.Headers.Set(server.HeaderRequestID, ctx.Request.Headers.Get(server.HeaderRequestID))
 	next()
 }

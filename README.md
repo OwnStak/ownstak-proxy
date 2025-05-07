@@ -105,6 +105,15 @@ To start the built binary for current platform, you can run the following comman
 
 Or just run it directly. It's standalone executable without any dependencies.
 
+
+## Proxy architecture
+The diagram below illustrates the request/response flow and how middlewares are executed. 
+Middlewares are always executed in the order they are registered in `main.go`. 
+Each middleware can perform actions during either the `onRequest` or `onResponse` phase and then pass control to the next middleware in the chain (for example `RequestIdMiddleware`). 
+Alternatively, a middleware can return early, skipping all subsequent middlewares in the current phase, and stream the response directly to the client (for example `ImageOptimizerMiddleware`). The streaming is disabled by default and response is buffered for other middlewares in row.
+
+![Badge](proxy-diagram.svg)
+
 ## Stable release
 To release a new version, you need to create a new release in the GitHub UI.
 After the release is created, the GitHub Actions will build the app for all the target platforms, release the docker images and attach the binaries to the release.

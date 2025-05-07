@@ -33,13 +33,8 @@ const (
 	HeaderXOwnMergeHeaders   = "X-Own-Merge-Headers"   // When present in the req, the proxy will merge the headers from the original headers when following a redirect
 	HeaderXOwnFollowRedirect = "X-Own-Follow-Redirect" // When detected in the res from lambda, the proxy will follow the redirect
 
-	HeaderXOwnFollowedRedirectUrl    = "X-Own-Followed-Redirect-Url"    // Present in res headers when the proxy follows a redirect
-	HeaderXOwnFollowedRedirectStatus = "X-Own-Followed-Redirect-Status" // Present in res headers when the proxy follows a redirect
-	HeaderXOwnLambdaName             = "X-Own-Lambda-Name"              // Present in res when the request is proxied to a Lambda function
-	HeaderXOwnLambdaRegion           = "X-Own-Lambda-Region"            // Present in res when the request is proxied to a Lambda function
-	HeaderXOwnLambdaDuration         = "X-Own-Lambda-Duration"          // Present in res when the request is proxied to a Lambda function
-	HeaderXOwnImageOptimizer         = "X-Own-Image-Optimizer"          // Present in res when the request is handled by the image optimizer
-	HeaderXOwnImageOptimizError      = "X-Own-Image-Optimizer-Error"    // Present in res when the request is handled by the image optimizer and there is an error
+	HeaderXOwnImageOptimizer = "X-Own-Image-Optimizer" // Present in res when the request is handled by the image optimizer
+	HeaderXOwnProxyDebug     = "X-Own-Proxy-Debug"     // Present in res, contains the debug information from the proxy middlewares
 )
 
 // Content type constants

@@ -2,9 +2,7 @@ package middlewares
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +10,7 @@ import (
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
+	"regexp"
 	"strings"
 	"time"
 
@@ -139,7 +138,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	// ownstak.link is the domain name
 	hostParts := strings.Split(ctx.Request.Host, ".")
 	if len(hostParts) < 3 {
-		errorMessage := fmt.Sprintf("Invalid hostname format '%s'.\r\n", ctx.Request.Host)
+		errorMessage := fmt.Sprintf("Invalid hostname format '%s': ", ctx.Request.Host)
 		errorMessage += "The expected format is '{project-slug}-{environment-slug}-{optional-deployment-id}.{cloudbackend-slug}.{organization-slug}.{domain-name}.'\r\n"
 		errorMessage += "e.g: nextjs-app-prod-123.aws-primary.my-org.ownstak.link\r\n"
 		errorMessage += "e.g: nextjs-app-prod.aws-primary.my-org.ownstak.link\r\n"
@@ -147,29 +146,42 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 		return
 	}
 
-	// Parse the lambda host part to segments
+	// Parse lambda name from the host header
+	// IMPORTANT:
+	// The below code and logic needs to be in sync with the OwnStak Console.
+	// Change it only if you're sure what you're doing and ready to face the consequences.
+	// We need to do this parsing/transformation because the host/lambda name limit is 63/64 characters
+	// and we need to fit deployment id into it and still keep it readable and nice looking.
+	// See: https://github.com/OwnStak/ownstak-console/blob/main/api/app/services/deployments/aws_deployer.rb#L312
 	lambdaHost := hostParts[0] // e.g: myproject-prod, myproject-prod-125 etc...
-	lambdaHostParts := strings.Split(lambdaHost, "-")
-	projectSlug := lambdaHostParts[0]     // required project slug
-	environmentSlug := lambdaHostParts[1] // required environment slug
 
-	deploymentId := "" // optional deployment id
-	if len(lambdaHostParts) > 2 {
-		deploymentId = lambdaHostParts[2]
+	// We need to extract lambda name and optional deployment id
+	// from the first host segment using regex ^(.*?)(?:-(\d+))?$
+	lambdaNameRegex := regexp.MustCompile(`^(.*?)(?:-(\d+))?$`)
+	lambdaNameParts := lambdaNameRegex.FindStringSubmatch(lambdaHost)
+	lambdaName := lambdaNameParts[1]
+
+	// Construct the lambda name.
+	// If the lambda name from the host header is already prefixed with "ownstak-",
+	// keep it as is. Otherwise, add the prefix so it can be used as is in the Lambda ARN.
+	lambdaNamePrefix := "ownstak-"
+	if !strings.HasPrefix(lambdaName, lambdaNamePrefix) {
+		lambdaName = lambdaNamePrefix + lambdaName
 	}
 
-	// IMPORTANT:
-	// This code and naming convention is used by the OwnStak Console to create the correct Lambda function and alias.
-	// Make sure it's always in sync. We need to add "deployment-" prefix to all lambda aliases because
-	// the alias cannot start with a number. The prefix is not in URL to save bytes in 63 domain segment limit.
-	// See: https://github.com/OwnStak/ownstak-console/blob/main/api/app/services/deployments/aws_deployer.rb#L312
-	lambdaAlias := "current" // defaults to current deployment
+	// Get deployment id if present
+	deploymentId := ""
+	if len(lambdaNameParts) > 2 {
+		deploymentId = lambdaNameParts[2]
+	}
+
+	// Construct the Lambda alias from the deployment id if present,
+	// otherwise use "current" as the alias that points to the latest deployment.
+	// NOTE: We need to do it because the Lambda alias cannot start with a number.
+	lambdaAlias := "current"
 	if deploymentId != "" {
 		lambdaAlias = "deployment-" + deploymentId
 	}
-
-	lambdaReadableName := projectSlug + "-" + environmentSlug // e.g: myproject-prod
-	lambdaName := m.getLambdaName(lambdaReadableName)
 
 	// Get the AWS account ID from caller identity
 	// if not set through AWS_ACCOUNT_ID environment variable
@@ -208,7 +220,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	invocationDuration := time.Since(invocationStartTime)
 
 	// Set Lambda invocation duration header
-	ctx.Response.Headers.Set(server.HeaderXOwnLambdaDuration, invocationDuration.String())
+	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-duration="+invocationDuration.String())
 
 	// Handle invocation errors
 	if err != nil {
@@ -276,22 +288,15 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	}
 
 	// Store details for the response phase
-	ctx.Response.Headers.Set(server.HeaderXOwnLambdaName, lambdaName)
-	ctx.Response.Headers.Set(server.HeaderXOwnLambdaRegion, m.awsConfig.Region)
+	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-name="+lambdaName)
+	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-alias="+lambdaAlias)
+	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-region="+m.awsConfig.Region)
 
 	// No need to call next() as we've fully handled the request
 }
 
-// OnResponse adds Lambda headers to the response
 func (m *AWSLambdaMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
-	ctx.Response.Headers.Set(server.HeaderXOwnLambdaRegion, m.awsConfig.Region)
 	next()
-}
-
-// getLambdaName returns a 64 characters sha256 hash of the lambda readable name
-func (m *AWSLambdaMiddleware) getLambdaName(lambdaReadableName string) string {
-	hash := sha256.Sum256([]byte(lambdaReadableName))
-	return hex.EncodeToString(hash[:])
 }
 
 // getAccountIdFromCaller retrieves the AWS account ID from the caller identity
