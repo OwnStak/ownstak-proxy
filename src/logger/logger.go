@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"ownstak-proxy/src/constants"
 	"strings"
 	"time"
 
@@ -45,7 +46,7 @@ func init() {
 	godotenv.Load(".env", ".env.local")
 
 	// Get log level from environment variable
-	logLevel := os.Getenv("LOG_LEVEL")
+	logLevel := os.Getenv(constants.EnvLogLevel)
 	switch strings.ToLower(logLevel) {
 	case "debug":
 		currentLogLevel = DEBUG

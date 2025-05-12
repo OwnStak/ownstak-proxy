@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/middlewares"
@@ -14,7 +15,8 @@ func main() {
 	godotenv.Load(".env", ".env.local")
 
 	// Log the app info and start the server
-	logger.Info("%s, Version: %s, Mode: %s", constants.AppName, constants.Version, constants.Mode)
+	provider := os.Getenv(constants.EnvProvider)
+	logger.Info("%s, Version: %s, Mode: %s, Provider: %s", constants.AppName, constants.Version, constants.Mode, provider)
 	server.NewServer().
 		Use(middlewares.NewHealthcheckMiddleware()).
 		Use(middlewares.NewRequestIdMiddleware()).

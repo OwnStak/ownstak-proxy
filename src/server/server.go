@@ -28,17 +28,20 @@ import (
 )
 
 type Server struct {
-	host        string
-	httpPort    string
-	httpsPort   string
-	certFile    string
-	keyFile     string
-	caFile      string
-	readTimeout time.Duration
-	cache       *Cache
-	middleware  *MiddlewareChain
-	startTime   time.Time
-	serverId    string
+	host           string
+	httpPort       string
+	httpsPort      string
+	certFile       string
+	keyFile        string
+	caFile         string
+	readTimeout    time.Duration
+	writeTimeout   time.Duration
+	idleTimeout    time.Duration
+	maxHeaderBytes int
+	cache          *Cache
+	middleware     *MiddlewareChain
+	startTime      time.Time
+	serverId       string
 }
 
 func NewServer() *Server {
@@ -46,32 +49,66 @@ func NewServer() *Server {
 	serverId := uuid.New().String()
 
 	// Set default values if environment variables are not set
-	host := os.Getenv("HOST")
-	httpPort := os.Getenv("HTTP_PORT")
-	httpsPort := os.Getenv("HTTPS_PORT")
-	certFile := os.Getenv("HTTPS_CERT")
-	keyFile := os.Getenv("HTTPS_CERT_KEY")
-	caFile := os.Getenv("HTTPS_CERT_CA")
+	host := os.Getenv(constants.EnvHost)
+	httpPort := os.Getenv(constants.EnvHttpPort)
+	httpsPort := os.Getenv(constants.EnvHttpsPort)
+	certFile := os.Getenv(constants.EnvHttpsCert)
+	keyFile := os.Getenv(constants.EnvHttpsCertKey)
+	caFile := os.Getenv(constants.EnvHttpsCertCa)
 
-	// Read timeout configuration from environment
-	readTimeoutStr := os.Getenv("READ_TIMEOUT")
-	readTimeout := 10 * time.Second // Default to 10 seconds
+	// Set the maximum time the server will wait for a request from the client
+	readTimeoutStr := os.Getenv(constants.EnvReadTimeout)
+	readTimeout := 2 * time.Minute // Defaults to 2 minutes
 	if readTimeoutStr != "" {
 		if rt, err := time.ParseDuration(readTimeoutStr); err == nil {
 			readTimeout = rt
 		} else {
-			logger.Warn("Invalid READ_TIMEOUT format, using default: 10s")
+			logger.Warn(fmt.Sprintf("Invalid READ_TIMEOUT format, using default: %d", readTimeout))
 		}
 	}
 
-	// Get cache max size from environment or use default (100MB)
-	cacheMaxSizeStr := os.Getenv("CACHE_MAX_SIZE")
-	cacheMaxSize := 100 * 1024 * 1024 // Default to 100MB
+	// Set the maximum time the server will wait for the client to receive the response
+	writeTimeoutStr := os.Getenv(constants.EnvWriteTimeout)
+	writeTimeout := 2 * time.Hour // Defaults to 2 hours
+	if writeTimeoutStr != "" {
+		if wt, err := time.ParseDuration(writeTimeoutStr); err == nil {
+			writeTimeout = wt
+		} else {
+			logger.Warn(fmt.Sprintf("Invalid WRITE_TIMEOUT format, using default: %d", writeTimeout))
+		}
+	}
+
+	// Set the maximum time the server will wait for a client to send next requests
+	// when using keep-alive or initial connection
+	idleTimeoutStr := os.Getenv(constants.EnvIdleTimeout)
+	idleTimeout := 60 * time.Second // Defaults to 60 seconds
+	if idleTimeoutStr != "" {
+		if it, err := time.ParseDuration(idleTimeoutStr); err == nil {
+			idleTimeout = it
+		} else {
+			logger.Warn(fmt.Sprintf("Invalid IDLE_TIMEOUT format, using default: %d", idleTimeout))
+		}
+	}
+
+	// Set the maximum size of the memory cache in bytes
+	cacheMaxSizeStr := os.Getenv(constants.EnvCacheMaxSize)
+	cacheMaxSize := 50 * 1024 * 1024 // Defaults to 50MiB
 	if cacheMaxSizeStr != "" {
 		if size, err := strconv.Atoi(cacheMaxSizeStr); err == nil {
 			cacheMaxSize = size
 		} else {
-			logger.Warn("Invalid CACHE_MAX_SIZE format, using default: 100MB")
+			logger.Warn(fmt.Sprintf("Invalid CACHE_MAX_SIZE format, using default: %d", cacheMaxSize))
+		}
+	}
+
+	// Set the maximum total size of accepted request headers in bytes
+	maxHeaderBytesStr := os.Getenv(constants.EnvMaxHeaderBytes)
+	maxHeaderBytes := 1024 * 1024 // Defaults to 1MiB
+	if maxHeaderBytesStr != "" {
+		if size, err := strconv.Atoi(maxHeaderBytesStr); err == nil {
+			maxHeaderBytes = size
+		} else {
+			logger.Warn(fmt.Sprintf("Invalid MAX_HEADER_BYTES format, using default: %d", maxHeaderBytes))
 		}
 	}
 
@@ -100,17 +137,20 @@ func NewServer() *Server {
 	}
 
 	return &Server{
-		host:        host,
-		httpPort:    httpPort,
-		httpsPort:   httpsPort,
-		certFile:    certFile,
-		keyFile:     keyFile,
-		caFile:      caFile,
-		readTimeout: readTimeout,
-		middleware:  NewMiddlewareChain(),
-		cache:       NewCache(cacheMaxSize),
-		startTime:   time.Now(),
-		serverId:    serverId,
+		host:           host,
+		httpPort:       httpPort,
+		httpsPort:      httpsPort,
+		certFile:       certFile,
+		keyFile:        keyFile,
+		caFile:         caFile,
+		readTimeout:    readTimeout,
+		writeTimeout:   writeTimeout,
+		idleTimeout:    idleTimeout,
+		maxHeaderBytes: maxHeaderBytes,
+		middleware:     NewMiddlewareChain(),
+		cache:          NewCache(cacheMaxSize),
+		startTime:      time.Now(),
+		serverId:       serverId,
 	}
 }
 
@@ -145,9 +185,12 @@ func (s *Server) Start() {
 
 	// Create HTTP server
 	httpServer := &http.Server{
-		Addr:        fmt.Sprintf("%s:%s", s.host, s.httpPort),
-		Handler:     http.HandlerFunc(s.handleRequest),
-		ReadTimeout: s.readTimeout,
+		Addr:           fmt.Sprintf("%s:%s", s.host, s.httpPort),
+		Handler:        http.HandlerFunc(s.handleRequest),
+		ReadTimeout:    s.readTimeout,
+		WriteTimeout:   s.writeTimeout,
+		IdleTimeout:    s.idleTimeout,
+		MaxHeaderBytes: s.maxHeaderBytes,
 	}
 
 	// Create HTTPS server with HTTP/2 support
@@ -160,15 +203,18 @@ func (s *Server) Start() {
 			},
 			NextProtos: []string{"h2", "http/1.1"}, // Enable HTTP/2 protocol negotiation
 		},
-		Handler:     http.HandlerFunc(s.handleRequest),
-		ReadTimeout: s.readTimeout,
+		Handler:        http.HandlerFunc(s.handleRequest),
+		ReadTimeout:    s.readTimeout,
+		WriteTimeout:   s.writeTimeout,
+		IdleTimeout:    s.idleTimeout,
+		MaxHeaderBytes: s.maxHeaderBytes,
 	}
 
 	// Configure HTTP/2
 	http2.ConfigureServer(httpsServer, &http2.Server{
 		// HTTP/2 specific settings can go here
-		MaxConcurrentStreams: 250,
-		IdleTimeout:          10 * time.Second,
+		MaxConcurrentStreams: 250, // max streams per client connection
+		IdleTimeout:          s.idleTimeout,
 	})
 
 	// Start HTTP server in a goroutine

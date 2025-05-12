@@ -3,9 +3,11 @@ package middlewares
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
+	"os"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
@@ -65,12 +67,18 @@ func NewServerInfoMiddleware() *ServerInfoMiddleware {
 
 // OnRequest handles the request phase
 func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
-	ctx.Request.Headers.Set(server.HeaderXOwnProxyVersion, constants.Version)
+	// If there's no provider set, return an error
+	provider := os.Getenv(constants.EnvProvider)
+	if provider == "" {
+		// If no provider is set, return an error
+		ctx.Error(fmt.Sprintf("Unknown provider: The %s environment variable is not set. ", constants.EnvProvider), server.StatusServiceUnavailable)
+		return
+	}
 
 	// Handle pprof endpoints under /__internal__/debug/pprof/
-	if constants.Mode == "development" && strings.HasPrefix(ctx.Request.Path, "/__internal__/debug/pprof/") {
+	if constants.Mode == "development" && strings.HasPrefix(ctx.Request.Path, constants.InternalPathPrefix+"/debug/pprof/") {
 		// Remove the /__internal__ prefix to match pprof's expected paths
-		path := strings.TrimPrefix(ctx.Request.Path, "/__internal__")
+		path := strings.TrimPrefix(ctx.Request.Path, constants.InternalPathPrefix)
 
 		// Create a response writer that captures the output
 		rw := &responseWriter{

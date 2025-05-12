@@ -86,20 +86,18 @@ type AWSLambdaMiddleware struct {
 
 func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 	// Check AWS credentials before doing anything
-	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-		logger.Warn("Disabling AWS Lambda middleware - AWS credentials not found.")
+	provider := strings.ToLower(os.Getenv(constants.EnvProvider))
+	if provider != constants.ProviderAWS {
+		logger.Warn(fmt.Sprintf("Disabling AWS Lambda middleware - The provider doesn't match '%s'", constants.ProviderAWS))
 		return nil
 	}
 
 	// Use the AWS_ACCOUNT_ID environment variable if set
-	accountId := os.Getenv("AWS_ACCOUNT_ID")
-	if accountId == "" {
-		logger.Warn("AWS_ACCOUNT_ID environment variable not set - using caller identity.")
-	}
+	accountId := os.Getenv(constants.EnvAWSAccountId)
 
 	// Set default region
 	region := "us-east-1"
-	if envRegion := os.Getenv("AWS_REGION"); envRegion != "" {
+	if envRegion := os.Getenv(constants.EnvAWSRegion); envRegion != "" {
 		region = envRegion
 	}
 

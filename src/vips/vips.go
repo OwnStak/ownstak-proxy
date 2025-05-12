@@ -10,6 +10,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/utils"
 
@@ -190,14 +191,14 @@ func Initialize() error {
 
 	var err error
 	// Initialize debug mode from environment variables
-	debug = os.Getenv("VIPS_DEBUG") == "true"
+	debug = os.Getenv(constants.EnvVipsDebug) == "true"
 	if debug {
 		logger.Info("VIPS debug mode enabled")
 	}
 
 	// Set default MALLOC_ARENA_MAX before loading libvips
-	if os.Getenv("MALLOC_ARENA_MAX") == "" {
-		os.Setenv("MALLOC_ARENA_MAX", "2")
+	if os.Getenv(constants.EnvMallocArenaMax) == "" {
+		os.Setenv(constants.EnvMallocArenaMax, "2")
 	}
 
 	// First try to load platform-specific libraries from ./lib
@@ -337,8 +338,8 @@ func Initialize() error {
 	vipsConcurrencySet(concurrency)
 
 	maxCacheSize := 0 // disable operations cache
-	if os.Getenv("VIPS_MAX_CACHE_SIZE") != "" {
-		envMaxCacheSize, err := strconv.Atoi(os.Getenv("VIPS_MAX_CACHE_SIZE"))
+	if os.Getenv(constants.EnvVipsMaxCacheSize) != "" {
+		envMaxCacheSize, err := strconv.Atoi(os.Getenv(constants.EnvVipsMaxCacheSize))
 		if err != nil {
 			return fmt.Errorf("failed to parse VIPS_MAX_CACHE_SIZE: %v", err)
 		}
@@ -347,8 +348,8 @@ func Initialize() error {
 	vipsCacheSetMax(maxCacheSize)
 
 	maxCacheMem := 0 // disable memory cache
-	if os.Getenv("VIPS_MAX_CACHE_MEM") != "" {
-		envMaxCacheMem, err := strconv.Atoi(os.Getenv("VIPS_MAX_CACHE_MEM"))
+	if os.Getenv(constants.EnvVipsMaxCacheMem) != "" {
+		envMaxCacheMem, err := strconv.Atoi(os.Getenv(constants.EnvVipsMaxCacheMem))
 		if err != nil {
 			return fmt.Errorf("failed to parse VIPS_MAX_CACHE_MEM: %v", err)
 		}
@@ -357,8 +358,8 @@ func Initialize() error {
 	vipsCacheSetMaxMem(maxCacheMem)
 
 	leak := 0 // do not try to trace leaks by default, as it will slow down the library
-	if os.Getenv("VIPS_LEAK") != "" {
-		envLeak, err := strconv.Atoi(os.Getenv("VIPS_LEAK"))
+	if os.Getenv(constants.EnvVipsLeak) != "" {
+		envLeak, err := strconv.Atoi(os.Getenv(constants.EnvVipsLeak))
 		if err != nil {
 			return fmt.Errorf("failed to parse VIPS_LEAK: %v", err)
 		}

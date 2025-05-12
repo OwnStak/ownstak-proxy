@@ -5,6 +5,7 @@ const (
 	StatusOK                  = 200
 	StatusBadRequest          = 400
 	StatusInternalServerError = 500
+	StatusServiceUnavailable  = 503
 	StatusPermanentRedirect   = 301
 	StatusTemporaryRedirect   = 302
 

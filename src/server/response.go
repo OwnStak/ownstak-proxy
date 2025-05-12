@@ -22,10 +22,8 @@ type ServerResponse struct {
 // NewServerResponse creates a new ServerResponse with default values
 func NewServerResponse(responseWriter ...http.ResponseWriter) *ServerResponse {
 	headers := make(http.Header)
-	headers.Set(HeaderContentType, ContentTypePlain)
-	headers.Set(HeaderXOwnProxyVersion, constants.Version)
 
-	sr := &ServerResponse{
+	res := &ServerResponse{
 		Status:           http.StatusOK,
 		Headers:          headers,
 		Body:             []byte{},
@@ -34,12 +32,15 @@ func NewServerResponse(responseWriter ...http.ResponseWriter) *ServerResponse {
 		StreamingStarted: false,
 	}
 
+	// Clear response, so default values are set
+	res.Clear()
+
 	// Set response writer if provided
 	if len(responseWriter) > 0 && responseWriter[0] != nil {
-		sr.ResponseWriter = responseWriter[0]
+		res.ResponseWriter = responseWriter[0]
 	}
 
-	return sr
+	return res
 }
 
 // SetResponseWriter allows setting the response writer after creation
@@ -102,15 +103,17 @@ func (res *ServerResponse) Write(chunk []byte) (int, error) {
 
 func (res *ServerResponse) Clear() {
 	res.Status = http.StatusOK
-	res.Headers = make(http.Header)
-	res.Body = []byte{}
 	res.Ended = false
 	res.Streaming = false
 	res.StreamingStarted = false
+	res.ClearHeaders()
+	res.ClearBody()
 }
 
 func (res *ServerResponse) ClearHeaders() {
 	res.Headers = make(http.Header)
+	res.Headers.Set(HeaderContentType, ContentTypePlain)
+	res.Headers.Set(HeaderXOwnProxyVersion, constants.Version)
 }
 
 func (res *ServerResponse) ClearBody() {

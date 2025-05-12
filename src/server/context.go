@@ -52,8 +52,10 @@ func (ctx *ServerContext) Error(errorMessage string, errorStatus int) {
 	// If client accepts HTML, return HTML error
 	// Otherwise, return JSON error
 	if strings.Contains(accept, ContentTypeHTML) {
+		ctx.Response.Headers.Set(HeaderContentType, ContentTypeHTML)
 		ctx.Response.Body = []byte(ToHtmlErrorBody(errorMessage, errorStatus, requestId))
 	} else {
+		ctx.Response.Headers.Set(HeaderContentType, ContentTypeJSON)
 		ctx.Response.Body = []byte(ToJsonErrorBody(errorMessage, errorStatus, requestId))
 	}
 }
