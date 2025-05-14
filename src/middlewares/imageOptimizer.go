@@ -40,8 +40,8 @@ import (
  * It has the same syntax as image optimizer from Next.js, so it works as drop-in replacement.
  *
  * For example:
- * https://example.com/__internal__/image?url=/image.jpg&w=100&h=100&q=80
- * https://example.com/__internal__/image?url=https://example.com/image.png&w=100&h=100&f=png
+ * https://example.com/__ownstak__/image?url=/image.jpg&w=100&h=100&q=80
+ * https://example.com/__ownstak__/image?url=https://example.com/image.png&w=100&h=100&f=png
  *
  * The Image Optimizer supports the following query params:
  * - url: The relative or absolute URL of the image to optimize.
@@ -65,7 +65,7 @@ import (
  * - The "url" query param is not provided.
  * - The "url" query param is not a valid URL.
  * - The "url" query param is not from the same domain.
- * - The "url" param points back to /__internal__/ path.
+ * - The "url" param points back to /__ownstak__/ path.
  */
 
 // Define limits and defaults
@@ -131,7 +131,7 @@ func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
 	}
 }
 
-func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	// Run the Image Optimizer middleware only on below path
 	if ctx.Request.Path != constants.InternalPathPrefix+"/image" {
 		next()
@@ -187,7 +187,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 		return
 	}
 
-	// Check if the URL is trying to fetch from /__internal__ path
+	// Check if the URL is trying to fetch from /__ownstak__ path
 	if strings.Contains(parsedURL.Path, constants.InternalPathPrefix) {
 		ctx.Error("Image Optimizer failed: Fetching images from "+constants.InternalPathPrefix+" path is not allowed", http.StatusBadRequest)
 		return
@@ -460,7 +460,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.ServerContext, next fun
 	runtime.GC()
 }
 
-func (m *ImageOptimizerMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
+func (m *ImageOptimizerMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	next()
 }
 

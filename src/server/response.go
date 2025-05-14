@@ -9,7 +9,7 @@ import (
 	"ownstak-proxy/src/logger"
 )
 
-type ServerResponse struct {
+type Response struct {
 	Status           int
 	Headers          http.Header
 	Body             []byte
@@ -19,11 +19,11 @@ type ServerResponse struct {
 	ResponseWriter   http.ResponseWriter
 }
 
-// NewServerResponse creates a new ServerResponse with default values
-func NewServerResponse(responseWriter ...http.ResponseWriter) *ServerResponse {
+// NewResponse creates a new Response with default values
+func NewResponse(responseWriter ...http.ResponseWriter) *Response {
 	headers := make(http.Header)
 
-	res := &ServerResponse{
+	res := &Response{
 		Status:           http.StatusOK,
 		Headers:          headers,
 		Body:             []byte{},
@@ -44,22 +44,22 @@ func NewServerResponse(responseWriter ...http.ResponseWriter) *ServerResponse {
 }
 
 // SetResponseWriter allows setting the response writer after creation
-func (res *ServerResponse) SetResponseWriter(rw http.ResponseWriter) {
+func (res *Response) SetResponseWriter(rw http.ResponseWriter) {
 	res.ResponseWriter = rw
 }
 
 // EnableStreaming enables streaming mode for this response
-func (res *ServerResponse) EnableStreaming() {
+func (res *Response) EnableStreaming() {
 	res.Streaming = true
 }
 
 // DisableStreaming disables streaming mode for this response
-func (res *ServerResponse) DisableStreaming() {
+func (res *Response) DisableStreaming() {
 	res.Streaming = false
 }
 
 // Writes body chunks to the response writer
-func (res *ServerResponse) Write(chunk []byte) (int, error) {
+func (res *Response) Write(chunk []byte) (int, error) {
 	if res.Streaming {
 		if res.ResponseWriter == nil {
 			logger.Warn("Attempted to stream response with nil ResponseWriter")
@@ -101,7 +101,7 @@ func (res *ServerResponse) Write(chunk []byte) (int, error) {
 	return len(chunk), nil
 }
 
-func (res *ServerResponse) Clear() {
+func (res *Response) Clear() {
 	res.Status = http.StatusOK
 	res.Ended = false
 	res.Streaming = false
@@ -110,19 +110,19 @@ func (res *ServerResponse) Clear() {
 	res.ClearBody()
 }
 
-func (res *ServerResponse) ClearHeaders() {
+func (res *Response) ClearHeaders() {
 	res.Headers = make(http.Header)
 	res.Headers.Set(HeaderContentType, ContentTypePlain)
 	res.Headers.Set(HeaderXOwnProxyVersion, constants.Version)
 }
 
-func (res *ServerResponse) ClearBody() {
+func (res *Response) ClearBody() {
 	res.Body = []byte{}
 }
 
 // Finishes the response and sends it to the client
 // if it wasn't already streamed
-func (res *ServerResponse) End() bool {
+func (res *Response) End() bool {
 	if res.Ended {
 		return false
 	}
@@ -151,11 +151,11 @@ func (res *ServerResponse) End() bool {
 }
 
 // For compatibility with http.ResponseWriter
-func (res *ServerResponse) Header() http.Header {
+func (res *Response) Header() http.Header {
 	return res.Headers
 }
 
-func (res *ServerResponse) AppendHeader(key, value string) {
+func (res *Response) AppendHeader(key, value string) {
 	existingValues := res.Headers.Get(key)
 	if existingValues != "" {
 		res.Headers.Set(key, existingValues+","+value)
@@ -165,14 +165,14 @@ func (res *ServerResponse) AppendHeader(key, value string) {
 }
 
 // For compatibility with http.ResponseWriter
-func (res *ServerResponse) WriteHeader(status int) {
+func (res *Response) WriteHeader(status int) {
 	if status == 0 {
 		status = http.StatusOK
 	}
 	res.Status = status
 }
 
-func (res *ServerResponse) Serialize() string {
+func (res *Response) Serialize() string {
 	serialized := make(map[string]interface{})
 	serialized["status"] = res.Status
 	serialized["headers"] = res.Headers
@@ -188,7 +188,7 @@ func (res *ServerResponse) Serialize() string {
 	return string(data)
 }
 
-func DeserializeServerResponse(data string) (*ServerResponse, error) {
+func DeserializeResponse(data string) (*Response, error) {
 	if data == "" {
 		return nil, fmt.Errorf("empty data provided for deserialization")
 	}
@@ -198,7 +198,7 @@ func DeserializeServerResponse(data string) (*ServerResponse, error) {
 		return nil, fmt.Errorf("invalid JSON data: %v", err)
 	}
 
-	res := NewServerResponse()
+	res := NewResponse()
 
 	// Handle status
 	if status, ok := serialized["status"].(float64); ok {

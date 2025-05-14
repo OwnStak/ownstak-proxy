@@ -367,6 +367,36 @@ func Initialize() error {
 	}
 	vipsLeakSet(leak)
 
+	// Use stub implementation of malloc_trim by default.
+	// There's no such a thing on darwin/windows platforms.
+	mallocTrim = func() int {
+		return 0
+	}
+
+	// If platform is linux, try to load malloc_trim.
+	// We use it to reduce the memory usage when running in container with low available memory.
+	// The libvips uses glib for memory management and it comes with gLib memory fragmentation issues.
+	// See: https://github.com/davidbyttow/govips?tab=readme-ov-file#malloc_arena_max
+	if osName == "linux" {
+		libcPaths := []string{
+			"libc.so.6",
+			"libc.so",
+			"libgcompat.so.0",
+			"libgcompat.so",
+		}
+	
+		for _, path := range libcPaths {
+			logger.Debug("Trying to load libc from: %s", path)
+			libc, err := purego.Dlopen(path, purego.RTLD_LAZY|purego.RTLD_GLOBAL)
+			if err != nil {
+				continue
+			}
+			logger.Debug("Successfully loaded libc from: %s", path)
+			purego.RegisterLibFunc(&mallocTrim, libc, "malloc_trim")
+			return nil
+		}
+	}
+
 	// Get info about the libvips
 	vipsVersionStr := vipsVersionString()
 	vipsConcurrency := vipsConcurrencyGet()
@@ -374,36 +404,6 @@ func Initialize() error {
 	maxCacheMemHuman := utils.FormatBytes(uint64(maxCacheMem))
 	logger.Info("VIPS %s initialized successfully (concurrency: %d, max cache size: %d, max cache mem: %s)", vipsVersionStr, vipsConcurrency, maxCacheSize, maxCacheMemHuman)
 	initialized = true
-
-	// Import libc. This is needed for malloc_trim to work on all platforms.
-	// This is a workaround to ensure malloc_trim is available on all platforms including minimal alpine distros.
-	libcPaths := []string{
-		"libgcompat.so.0",
-		"libgcompat.so.0",
-		"libc.musl-x86_64.so.1",
-		"libc.musl-aarch64.so.1",
-		"libc.so.6",
-		"libc.so",
-		"libSystem.B.dylib",
-	}
-
-	for _, path := range libcPaths {
-		logger.Debug("Trying to load libc from: %s", path)
-		libc, err := purego.Dlopen(path, purego.RTLD_LAZY|purego.RTLD_GLOBAL)
-		if err != nil {
-			continue
-		}
-		logger.Debug("Successfully loaded libc from: %s", path)
-		purego.RegisterLibFunc(&mallocTrim, libc, "malloc_trim")
-		return nil
-	}
-
-	// if malloc_trim is not found (darwin platforms),
-	// just use a stub implementation
-	logger.Warn("The malloc_trim func was not found in any libc implementation. The VIPS memory usage might be higher. This is expected for Darwin/Windows platforms.")
-	mallocTrim = func() int {
-		return 0
-	}
 
 	return nil
 }

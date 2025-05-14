@@ -1,19 +1,14 @@
 package middlewares
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/pprof"
-	"net/url"
 	"os"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
 	"ownstak-proxy/src/utils"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
@@ -41,13 +36,6 @@ type SystemInfo struct {
 	SystemMemoryUsagePct float64 `json:"systemMemoryUsagePct"`
 }
 
-type CacheInfo struct {
-	Size     int `json:"size"`
-	Count    int `json:"count"`
-	MaxSize  int `json:"maxSize"`
-	Sections int `json:"sections"`
-}
-
 type ServerInfoResponse struct {
 	ID           string        `json:"id"`
 	Name         string        `json:"name"`
@@ -55,7 +43,6 @@ type ServerInfoResponse struct {
 	Uptime       time.Duration `json:"uptime"`
 	UptimeString string        `json:"uptimeString"`
 	System       SystemInfo    `json:"system"`
-	Cache        CacheInfo     `json:"cache"`
 }
 
 // ServerInfoMiddleware provides information about the server
@@ -66,62 +53,12 @@ func NewServerInfoMiddleware() *ServerInfoMiddleware {
 }
 
 // OnRequest handles the request phase
-func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+func (m *ServerInfoMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	// If there's no provider set, return an error
 	provider := os.Getenv(constants.EnvProvider)
 	if provider == "" {
 		// If no provider is set, return an error
 		ctx.Error(fmt.Sprintf("Unknown provider: The %s environment variable is not set. ", constants.EnvProvider), server.StatusServiceUnavailable)
-		return
-	}
-
-	// Handle pprof endpoints under /__internal__/debug/pprof/
-	if constants.Mode == "development" && strings.HasPrefix(ctx.Request.Path, constants.InternalPathPrefix+"/debug/pprof/") {
-		// Remove the /__internal__ prefix to match pprof's expected paths
-		path := strings.TrimPrefix(ctx.Request.Path, constants.InternalPathPrefix)
-
-		// Create a response writer that captures the output
-		rw := &responseWriter{
-			headers: make(http.Header),
-			body:    new(bytes.Buffer),
-		}
-
-		// Create a request with the modified path
-		req := &http.Request{
-			Method: ctx.Request.Method,
-			URL: &url.URL{
-				Path: path,
-			},
-		}
-
-		// Route to the appropriate pprof handler
-		switch path {
-		case "/debug/pprof/":
-			pprof.Index(rw, req)
-		case "/debug/pprof/cmdline":
-			pprof.Cmdline(rw, req)
-		case "/debug/pprof/profile":
-			pprof.Profile(rw, req)
-		case "/debug/pprof/symbol":
-			pprof.Symbol(rw, req)
-		case "/debug/pprof/trace":
-			pprof.Trace(rw, req)
-		default:
-			// Handle goroutine, heap, threadcreate, etc.
-			if strings.HasPrefix(path, "/debug/pprof/") {
-				pprof.Handler(strings.TrimPrefix(path, "/debug/pprof/")).ServeHTTP(rw, req)
-			} else {
-				ctx.Error("Not Found", http.StatusNotFound)
-				return
-			}
-		}
-
-		// Copy the response
-		ctx.Response.Status = rw.status
-		for k, v := range rw.headers {
-			ctx.Response.Headers.Set(k, v[0])
-		}
-		ctx.Response.Body = rw.body.Bytes()
 		return
 	}
 
@@ -175,12 +112,6 @@ func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func())
 			SystemUsedMemoryStr:  utils.FormatBytes(virtualMemory.Used),
 			SystemMemoryUsagePct: virtualMemory.UsedPercent,
 		},
-		Cache: CacheInfo{
-			Size:     s.CacheSize(),
-			Count:    s.CacheCount(),
-			MaxSize:  s.CacheMaxSize(),
-			Sections: s.CacheSectionCount(),
-		},
 	}
 
 	// Convert to JSON
@@ -197,35 +128,6 @@ func (m *ServerInfoMiddleware) OnRequest(ctx *server.ServerContext, next func())
 	ctx.Response.Body = jsonData
 }
 
-// OnResponse adds version header to all responses
-func (m *ServerInfoMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
-	ctx.Response.Headers.Set(server.HeaderXOwnProxyVersion, constants.Version)
+func (m *ServerInfoMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	next()
-}
-
-// responseWriter implements http.ResponseWriter to capture pprof output
-type responseWriter struct {
-	headers http.Header
-	body    *bytes.Buffer
-	status  int
-}
-
-func (rw *responseWriter) Header() http.Header {
-	return rw.headers
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	// If no status code has been set, default to 200
-	if rw.status == 0 {
-		rw.status = http.StatusOK
-	}
-	return rw.body.Write(b)
-}
-
-func (rw *responseWriter) WriteHeader(status int) {
-	// Ensure we never set a status code of 0
-	if status == 0 {
-		status = http.StatusOK
-	}
-	rw.status = status
 }

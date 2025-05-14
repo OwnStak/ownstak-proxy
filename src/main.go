@@ -21,6 +21,7 @@ func main() {
 		Use(middlewares.NewHealthcheckMiddleware()).
 		Use(middlewares.NewRequestIdMiddleware()).
 		Use(middlewares.NewServerInfoMiddleware()).
+		Use(middlewares.NewServerProfilerMiddleware()).
 		Use(middlewares.NewImageOptimizerMiddleware()).
 		Use(middlewares.NewFollowRedirectMiddleware()).
 		Use(middlewares.NewAWSLambdaMiddleware()).

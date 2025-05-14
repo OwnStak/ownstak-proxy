@@ -121,7 +121,7 @@ func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 }
 
 // OnRequest processes the request to invoke Lambda if appropriate
-func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	// Check the host header
 	if strings.TrimSpace(ctx.Request.Host) == "" {
 		errorMessage := fmt.Sprintf("The host header or %s header is required.\r\n", server.HeaderXOwnHost)
@@ -293,7 +293,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	// No need to call next() as we've fully handled the request
 }
 
-func (m *AWSLambdaMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
+func (m *AWSLambdaMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	next()
 }
 
@@ -312,7 +312,7 @@ func (m *AWSLambdaMiddleware) getAccountIdFromCaller(ctx context.Context) (strin
 }
 
 // createApiGatewayEvent creates an API Gateway v2 JSON event from the request
-func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.ServerContext, accountID string) ([]byte, error) {
+func (m *AWSLambdaMiddleware) createApiGatewayEvent(ctx *server.RequestContext, accountID string) ([]byte, error) {
 	req := ctx.Request
 
 	// Extract headers
@@ -537,8 +537,8 @@ func (m *AWSLambdaMiddleware) invokeLambda(ctx context.Context, lambdaArn string
 	}
 }
 
-// processLambdaResponse processes the Lambda response and updates the ServerContext
-func (m *AWSLambdaMiddleware) processLambdaResponse(ctx *server.ServerContext, lambdaResponse *lambda.InvokeOutput) error {
+// processLambdaResponse processes the Lambda response and updates the RequestContext
+func (m *AWSLambdaMiddleware) processLambdaResponse(ctx *server.RequestContext, lambdaResponse *lambda.InvokeOutput) error {
 	if lambdaResponse.FunctionError != nil {
 		return fmt.Errorf("lambda function returned error: %s", *lambdaResponse.FunctionError)
 	}

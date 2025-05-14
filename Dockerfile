@@ -9,6 +9,7 @@ ARG OS
 ARG ARCH
 ENV DIST_NAME=$DIST_NAME
 ENV DEBIAN_FRONTEND=noninteractive
+ENV MALLOC_ARENA_MAX=2
 WORKDIR /dist
 
 # Update root CA certs, clean up the layer

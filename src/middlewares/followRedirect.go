@@ -21,12 +21,12 @@ func NewFollowRedirectMiddleware() *FollowRedirectMiddleware {
 }
 
 // OnRequest checks for an existing X-Request-ID header and generates a new one if missing
-func (m *FollowRedirectMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+func (m *FollowRedirectMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	// Nothing to do in request phase
 	next()
 }
 
-func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
+func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	redirectURL := ctx.Response.Headers.Get(server.HeaderLocation)
 	followRedirect := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)
 
@@ -157,7 +157,7 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.ServerContext, next fu
 }
 
 // NormalizeRedirectURL converts a potentially relative URL to an absolute URL
-func (m *FollowRedirectMiddleware) NormalizeRedirectURL(redirectURL string, ctx *server.ServerContext) string {
+func (m *FollowRedirectMiddleware) NormalizeRedirectURL(redirectURL string, ctx *server.RequestContext) string {
 	// Check if the redirect URL is relative
 	if !strings.HasPrefix(redirectURL, "http://") && !strings.HasPrefix(redirectURL, "https://") {
 		// Determine the current protocol and host to build the absolute URL

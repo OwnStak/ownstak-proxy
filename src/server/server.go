@@ -38,8 +38,7 @@ type Server struct {
 	writeTimeout   time.Duration
 	idleTimeout    time.Duration
 	maxHeaderBytes int
-	cache          *Cache
-	middleware     *MiddlewareChain
+	MiddlewaresChain     *MiddlewaresChain
 	startTime      time.Time
 	serverId       string
 }
@@ -90,17 +89,6 @@ func NewServer() *Server {
 		}
 	}
 
-	// Set the maximum size of the memory cache in bytes
-	cacheMaxSizeStr := os.Getenv(constants.EnvCacheMaxSize)
-	cacheMaxSize := 50 * 1024 * 1024 // Defaults to 50MiB
-	if cacheMaxSizeStr != "" {
-		if size, err := strconv.Atoi(cacheMaxSizeStr); err == nil {
-			cacheMaxSize = size
-		} else {
-			logger.Warn(fmt.Sprintf("Invalid CACHE_MAX_SIZE format, using default: %d", cacheMaxSize))
-		}
-	}
-
 	// Set the maximum total size of accepted request headers in bytes
 	maxHeaderBytesStr := os.Getenv(constants.EnvMaxHeaderBytes)
 	maxHeaderBytes := 1024 * 1024 // Defaults to 1MiB
@@ -147,36 +135,35 @@ func NewServer() *Server {
 		writeTimeout:   writeTimeout,
 		idleTimeout:    idleTimeout,
 		maxHeaderBytes: maxHeaderBytes,
-		middleware:     NewMiddlewareChain(),
-		cache:          NewCache(cacheMaxSize),
+		MiddlewaresChain: NewMiddlewaresChain(),
 		startTime:      time.Now(),
 		serverId:       serverId,
 	}
 }
 
 // Use adds a middleware to the chain that can intercept or process the request.
-func (s *Server) Use(mw Middleware) *Server {
+func (server *Server) Use(mw Middleware) *Server {
 	if mw == nil || reflect.ValueOf(mw).IsNil() {
-		return s
+		return server
 	}
 	middlewareName := reflect.TypeOf(mw).Elem().Name()
 	logger.Info("Adding middleware: %s", middlewareName)
-	s.middleware.Use(mw)
-	return s
+	server.MiddlewaresChain.Add(mw)
+	return server
 }
 
 // Start begins the server
-func (s *Server) Start() {
+func (server *Server) Start() {
 	// Ensure the directory for the certificate file exists
-	certDir := filepath.Dir(s.certFile)
+	certDir := filepath.Dir(server.certFile)
 	if err := os.MkdirAll(certDir, os.ModePerm); err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to create directory for certificates: %s", err))
 	}
 
 	// Check if certificate file exists
-	if _, err := os.Stat(s.certFile); os.IsNotExist(err) {
+	if _, err := os.Stat(server.certFile); os.IsNotExist(err) {
 		logger.Warn("Certificate file does not exist, generating self-signed certificate")
-		s.generateSelfSignedCert()
+		server.generateSelfSignedCert()
 	}
 
 	// Create a channel to listen for signals
@@ -185,41 +172,41 @@ func (s *Server) Start() {
 
 	// Create HTTP server
 	httpServer := &http.Server{
-		Addr:           fmt.Sprintf("%s:%s", s.host, s.httpPort),
-		Handler:        http.HandlerFunc(s.handleRequest),
-		ReadTimeout:    s.readTimeout,
-		WriteTimeout:   s.writeTimeout,
-		IdleTimeout:    s.idleTimeout,
-		MaxHeaderBytes: s.maxHeaderBytes,
+		Addr:           fmt.Sprintf("%s:%s", server.host, server.httpPort),
+		Handler:        http.HandlerFunc(server.handleRequest),
+		ReadTimeout:    server.readTimeout,
+		WriteTimeout:   server.writeTimeout,
+		IdleTimeout:    server.idleTimeout,
+		MaxHeaderBytes: server.maxHeaderBytes,
 	}
 
 	// Create HTTPS server with HTTP/2 support
 	httpsServer := &http.Server{
-		Addr: fmt.Sprintf("%s:%s", s.host, s.httpsPort),
+		Addr: fmt.Sprintf("%s:%s", server.host, server.httpsPort),
 		TLSConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			Certificates: []tls.Certificate{
-				s.loadCertificate(),
+				server.loadCertificate(),
 			},
 			NextProtos: []string{"h2", "http/1.1"}, // Enable HTTP/2 protocol negotiation
 		},
-		Handler:        http.HandlerFunc(s.handleRequest),
-		ReadTimeout:    s.readTimeout,
-		WriteTimeout:   s.writeTimeout,
-		IdleTimeout:    s.idleTimeout,
-		MaxHeaderBytes: s.maxHeaderBytes,
+		Handler:        http.HandlerFunc(server.handleRequest),
+		ReadTimeout:    server.readTimeout,
+		WriteTimeout:   server.writeTimeout,
+		IdleTimeout:    server.idleTimeout,
+		MaxHeaderBytes: server.maxHeaderBytes,
 	}
 
 	// Configure HTTP/2
 	http2.ConfigureServer(httpsServer, &http2.Server{
 		// HTTP/2 specific settings can go here
 		MaxConcurrentStreams: 250, // max streams per client connection
-		IdleTimeout:          s.idleTimeout,
+		IdleTimeout:          server.idleTimeout,
 	})
 
 	// Start HTTP server in a goroutine
 	go func() {
-		logger.Info(fmt.Sprintf("Starting HTTP server on %s:%s", s.host, s.httpPort))
+		logger.Info(fmt.Sprintf("Starting HTTP server on %s:%s", server.host, server.httpPort))
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(fmt.Sprintf("HTTP server failed: %s", err))
 		}
@@ -227,7 +214,7 @@ func (s *Server) Start() {
 
 	// Start HTTPS server in a goroutine
 	go func() {
-		logger.Info(fmt.Sprintf("Starting HTTPS server on %s:%s", s.host, s.httpsPort))
+		logger.Info(fmt.Sprintf("Starting HTTPS server on %s:%s", server.host, server.httpsPort))
 		if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 			logger.Fatal(fmt.Sprintf("HTTPS server failed: %s", err))
 		}
@@ -256,33 +243,33 @@ func (s *Server) Start() {
 	logger.Info("Server exited gracefully")
 }
 
-func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
-	// Create a new serverRequest
-	req, err := NewServerRequest(r)
+func (server *Server) handleRequest(httpRes http.ResponseWriter, httpReq *http.Request) {
+	// Create a new Request
+	req, err := NewRequest(httpReq)
 	if err != nil {
 		logger.Error("Failed to create server request: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		http.Error(httpRes, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	// Log incoming requests in debug mode
 	logger.Debug("%s %s", req.Method, req.URL)
 
-	// Create a new ServerResponse with the http.ResponseWriter
-	res := NewServerResponse(w)
+	// Create a new Response with the http.ResponseWriter
+	res := NewResponse(httpRes)
 
-	// Create a context containing request, response, and globally shared cache
-	ctx := NewServerContext(req, res, s)
+	// Create a context containing request, response
+	ctx := NewRequestContext(req, res, server)
 
 	// Execute middleware chain
-	s.middleware.Execute(ctx)
+	server.MiddlewaresChain.Execute(ctx)
 
 	// Send response to client
 	res.End()
 	res = nil
 }
 
-func (s *Server) generateSelfSignedCert() {
+func (server *Server) generateSelfSignedCert() {
 	// Generate a private key for the CA
 	caPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -310,7 +297,7 @@ func (s *Server) generateSelfSignedCert() {
 	}
 
 	// Write the CA certificate to a file
-	caOut, err := os.Create(s.caFile)
+	caOut, err := os.Create(server.caFile)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to open ca.pem for writing: %s", err))
 	}
@@ -348,7 +335,7 @@ func (s *Server) generateSelfSignedCert() {
 	}
 
 	// Write the server certificate to a file
-	certOut, err := os.Create(s.certFile)
+	certOut, err := os.Create(server.certFile)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to open cert.pem for writing: %s", err))
 	}
@@ -361,7 +348,7 @@ func (s *Server) generateSelfSignedCert() {
 	logger.Info("Written Server Certificate to cert.pem")
 
 	// Write the server private key to a file
-	keyOut, err := os.Create(s.keyFile)
+	keyOut, err := os.Create(server.keyFile)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to open key.pem for writing: %s", err))
 	}
@@ -378,62 +365,20 @@ func (s *Server) generateSelfSignedCert() {
 	logger.Info("Written Server Private Key to key.pem")
 }
 
-func (s *Server) loadCertificate() tls.Certificate {
-	cert, err := tls.LoadX509KeyPair(s.certFile, s.keyFile)
+func (server *Server) loadCertificate() tls.Certificate {
+	cert, err := tls.LoadX509KeyPair(server.certFile, server.keyFile)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to load certificate: %s", err))
 	}
 	return cert
 }
 
-// CacheSet adds a key-value pair to the cache with an optional expiration time
-// Returns true if the value was set, false if it couldn't be set due to size constraints
-func (s *Server) CacheSet(key string, value string, expiration time.Duration) bool {
-	return s.cache.Set(key, value, expiration)
-}
-
-// CacheGet retrieves a value from the cache by key
-// Returns the value and a boolean indicating if the value was found and not expired
-func (s *Server) CacheGet(key string) (string, bool) {
-	return s.cache.Get(key)
-}
-
-// CacheDelete removes a key-value pair from the cache
-func (s *Server) CacheDelete(key string) {
-	s.cache.Delete(key)
-}
-
-// CacheSize returns the current size of the cache in bytes
-func (s *Server) CacheSize() int {
-	return s.cache.Size()
-}
-
-// CacheCount returns the number of entries in the cache
-func (s *Server) CacheCount() int {
-	return s.cache.Count()
-}
-
-// CacheClear removes all entries from the cache
-func (s *Server) CacheClear() {
-	s.cache.Clear()
-}
-
 // StartTime returns the time when the server was started
-func (s *Server) StartTime() time.Time {
-	return s.startTime
+func (server *Server) StartTime() time.Time {
+	return server.startTime
 }
 
 // ServerId returns the unique identifier for this server instance
-func (s *Server) ServerId() string {
-	return s.serverId
-}
-
-// CacheMaxSize returns the maximum size of the cache in bytes
-func (s *Server) CacheMaxSize() int {
-	return s.cache.maxSize
-}
-
-// CacheSectionCount returns the number of sections in the cache
-func (s *Server) CacheSectionCount() int {
-	return s.cache.sectionCount
+func (server *Server) ServerId() string {
+	return server.serverId
 }

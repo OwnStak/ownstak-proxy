@@ -14,7 +14,7 @@ func NewRequestIdMiddleware() *RequestIdMiddleware {
 }
 
 // OnRequest checks for an existing X-Request-ID header and generates a new one if missing
-func (m *RequestIdMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+func (m *RequestIdMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	requestID := ctx.Request.Headers.Get(server.HeaderRequestID)
 	if requestID == "" {
 		requestID = uuid.New().String()
@@ -26,7 +26,7 @@ func (m *RequestIdMiddleware) OnRequest(ctx *server.ServerContext, next func()) 
 	next()
 }
 
-func (m *RequestIdMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
+func (m *RequestIdMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	// Set request ID to res in the response send phase for middlewares that overrides the whole response
 	ctx.Response.Headers.Set(server.HeaderRequestID, ctx.Request.Headers.Get(server.HeaderRequestID))
 	next()

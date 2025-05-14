@@ -4,32 +4,32 @@ package server
 type Middleware interface {
 	// OnRequest is called right after the request is received,
 	// and before onResponse is called.
-	OnRequest(ctx *ServerContext, next func())
+	OnRequest(ctx *RequestContext, next func())
 
 	// OnResponse is called after all other OnRequest middlewares have been executed
 	// and right before the response is sent to the client, so it can modify the response.
-	OnResponse(ctx *ServerContext, next func())
+	OnResponse(ctx *RequestContext, next func())
 }
 
-// MiddlewareChain holds ordered lists of middleware for request and response phases
-type MiddlewareChain struct {
+// MiddlewaresChain holds ordered lists of middleware for request and response phases
+type MiddlewaresChain struct {
 	middlewares []Middleware
 }
 
-// NewMiddlewareChain creates a new middleware chain
-func NewMiddlewareChain() *MiddlewareChain {
-	return &MiddlewareChain{
+// NewMiddlewaresChain creates a new middleware chain
+func NewMiddlewaresChain() *MiddlewaresChain {
+	return &MiddlewaresChain{
 		middlewares: []Middleware{},
 	}
 }
 
-// Use adds a middleware to the processing chain
-func (mc *MiddlewareChain) Use(mw Middleware) {
+// Adds a middleware to the processing chain
+func (mc *MiddlewaresChain) Add(mw Middleware) {
 	mc.middlewares = append(mc.middlewares, mw)
 }
 
 // Execute runs all middlewares in the order they were added
-func (mc *MiddlewareChain) Execute(ctx *ServerContext) {
+func (mc *MiddlewaresChain) Execute(ctx *RequestContext) {
 	// Execute OnRequest middlewares
 	mc.executeChainOnRequest(ctx)
 
@@ -40,7 +40,7 @@ func (mc *MiddlewareChain) Execute(ctx *ServerContext) {
 // executeChainOnRequest executes OnRequest middlewares in the chain
 // NOTE: This could be recursion, but debugging for with index is way easier
 // in profiler
-func (mc *MiddlewareChain) executeChainOnRequest(ctx *ServerContext) {
+func (mc *MiddlewaresChain) executeChainOnRequest(ctx *RequestContext) {
 	for index := 0; index < len(mc.middlewares); index++ {
 		currentMiddleware := mc.middlewares[index]
 
@@ -59,7 +59,7 @@ func (mc *MiddlewareChain) executeChainOnRequest(ctx *ServerContext) {
 }
 
 // executeChainOnResponse executes OnResponse middlewares in the chain
-func (mc *MiddlewareChain) executeChainOnResponse(ctx *ServerContext) {
+func (mc *MiddlewaresChain) executeChainOnResponse(ctx *RequestContext) {
 	for index := 0; index < len(mc.middlewares); index++ {
 		currentMiddleware := mc.middlewares[index]
 

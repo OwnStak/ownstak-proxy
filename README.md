@@ -29,7 +29,7 @@ All internal endpoints are prefixed with `/__ownstak__/` to prevent collisions w
 ## Installation
 ### 1. Clone the repository
 ```bash
-git clone git@github.com:ownstak-org/ownstak-proxy.git
+git clone git@github.com:ownstak/ownstak-proxy.git
 ```
 
 ### 2. Install Go from package repository
@@ -61,7 +61,7 @@ You can install it by running:
 
 ```bash
 # macOS
-brew install vips glibc
+brew install vips
 ```
 
 ```bash

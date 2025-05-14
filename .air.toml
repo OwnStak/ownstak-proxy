@@ -4,7 +4,12 @@ tmp_dir = "tmp"
 [build]
   args_bin = []
   bin = "./tmp/ownstak-proxy"
+  pre_cmd = [
+    "kill $(lsof -t -i:3000) 2>/dev/null || true",
+    "kill $(lsof -t -i:3443) 2>/dev/null || true"
+  ]
   cmd = "go build -o ./tmp/ownstak-proxy ./src"
+  post_cmd = []
   delay = 1000
   exclude_dir = ["tmp", "certs", "dist", "scripts"]
   exclude_file = []
@@ -19,8 +24,6 @@ tmp_dir = "tmp"
   log = "build-errors.log"
   poll = false
   poll_interval = 0
-  post_cmd = []
-  pre_cmd = []
   rerun = false
   rerun_delay = 500
   send_interrupt = false

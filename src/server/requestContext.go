@@ -8,31 +8,29 @@ import (
 	"strings"
 )
 
-// ServerContext encapsulates the request, response, and shared resources
+// RequestContext encapsulates the request, response, and shared resources
 // for a single HTTP request lifecycle
-type ServerContext struct {
-	Request     *ServerRequest
-	Response    *ServerResponse
-	Cache       *Cache
+type RequestContext struct {
+	Request     *Request
+	Response    *Response
 	Server      *Server
 	ErrorMesage string
 	ErrorStatus int
 }
 
-// NewServerContext creates a new context for a request/response pair
-func NewServerContext(req *ServerRequest, res *ServerResponse, s *Server) *ServerContext {
-	return &ServerContext{
+// NewRequestContext creates a new context for a request/response pair
+func NewRequestContext(req *Request, res *Response, server *Server) *RequestContext {
+	return &RequestContext{
 		Request:     req,
 		Response:    res,
-		Cache:       s.cache,
-		Server:      s,
+		Server:      server,
 		ErrorMesage: "",
 		ErrorStatus: 0,
 	}
 }
 
 // Error sets an error response with the given message and status code to the current context and returns the response.
-func (ctx *ServerContext) Error(errorMessage string, errorStatus int) {
+func (ctx *RequestContext) Error(errorMessage string, errorStatus int) {
 	// Set error information to context
 	ctx.ErrorMesage = errorMessage
 	ctx.ErrorStatus = errorStatus

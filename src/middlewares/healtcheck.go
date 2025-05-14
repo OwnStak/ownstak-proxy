@@ -12,7 +12,7 @@ func NewHealthcheckMiddleware() *HealthcheckMiddleware {
 	return &HealthcheckMiddleware{}
 }
 
-func (m *HealthcheckMiddleware) OnRequest(ctx *server.ServerContext, next func()) {
+func (m *HealthcheckMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	if ctx.Request.Path == constants.InternalPathPrefix+"/health" {
 		ctx.Response.Status = 200
 		ctx.Response.Body = []byte("OK")
@@ -22,6 +22,6 @@ func (m *HealthcheckMiddleware) OnRequest(ctx *server.ServerContext, next func()
 	next()
 }
 
-func (m *HealthcheckMiddleware) OnResponse(ctx *server.ServerContext, next func()) {
+func (m *HealthcheckMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	next()
 }
