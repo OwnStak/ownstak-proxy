@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.71.1
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.38.2
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.18
-	github.com/ebitengine/purego v0.8.2
+	github.com/ebitengine/purego v0.8.3
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/shirou/gopsutil/v3 v3.24.5

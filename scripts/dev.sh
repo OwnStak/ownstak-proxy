@@ -2,4 +2,4 @@
 source .env
 
 # Start the file watcher
-air -c .air.toml
+go run -mod=mod github.com/air-verse/air@v1.61.7 -c .air.toml
