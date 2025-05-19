@@ -159,13 +159,8 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 	lambdaNameParts := lambdaNameRegex.FindStringSubmatch(lambdaHost)
 	lambdaName := lambdaNameParts[1]
 
-	// Construct the lambda name.
-	// If the lambda name from the host header is already prefixed with "ownstak-",
-	// keep it as is. Otherwise, add the prefix so it can be used as is in the Lambda ARN.
-	lambdaNamePrefix := "ownstak-"
-	if !strings.HasPrefix(lambdaName, lambdaNamePrefix) {
-		lambdaName = lambdaNamePrefix + lambdaName
-	}
+	// Construct the lambda name by adding "ownstak-" prefix.
+	lambdaName = "ownstak-" + lambdaName
 
 	// Get deployment id if present
 	deploymentId := ""
