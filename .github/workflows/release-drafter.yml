@@ -20,7 +20,7 @@ jobs:
         container:
             image: ubuntu:22.04
         steps:
-            - uses: release-drafter/release-drafter@6.1.0
+            - uses: release-drafter/release-drafter@v6.1.0
               with:
                   config-name: release-drafter.yml
                   disable-autolabeler: true
