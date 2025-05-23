@@ -119,18 +119,18 @@ To release a new version, you need to create a new release in the GitHub UI.
 After the release is created, the GitHub Actions will build the app for all the target platforms, release the docker images and attach the binaries to the release.
 
 Steps to release a new version:
-1. Create a new release in the [Releases](https://github.com/ownstak-org/ownstak-proxy/releases/new) page or use existing release draft.
+1. Create a new release in the [Releases](https://github.com/ownstak/ownstak-proxy/releases/new) page or use existing release draft.
 2. Create a new tag with the corresponding version. The current release candidate version can be found in the `.env` file under `VERSION` variable but the release pipeline will use the version from the tag.
 3. The tag name should be in the format of `v{version}`. For example, `v1.0.1`. Then click on `Create new tag` button.
 4. Set the release title to same name as the tag.
 5. Add or update release notes if needed.
 6. Check the `Set as the latest release ` checkbox.
 7. Click on `Publish release` button.
-8. The release pipeline will start. You can see the progress in the [Actions](https://github.com/ownstak-org/ownstak-proxy/actions) page.
-9. Once the release pipeline is finished, you can see the release binaries in the [Releases](https://github.com/ownstak-org/ownstak-proxy/releases) page.
+8. The release pipeline will start. You can see the progress in the [Actions](https://github.com/ownstak/ownstak-proxy/actions) page.
+9. Once the release pipeline is finished, you can see the release binaries in the [Releases](https://github.com/ownstak/ownstak-proxy/releases) page.
 10. Done
 
-# Preview/Next release
+## Preview/Next release
 Every commit to the opened PR will trigger a preview/next release build. 
-The release version is in the format of `{version}-next-{timestamp}-{commit}`. For example, `1.0.0-next-1744196863-97afab`. 
+The released version has format `{version}-next-{pr_number}-{timestamp}`. For example, `1.0.0-next-39-1744196863`. 
 You can find the actual released next version in the CI logs.

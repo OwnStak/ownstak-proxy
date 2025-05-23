@@ -67,7 +67,7 @@ tag_version() {
 # Get the current version
 get_version() {
     current_version=$(grep -E '^VERSION=' "$ENV_FILE" | cut -d '=' -f2)
-    echo "✅ Current version: $current_version"
+    echo $current_version
 }
 
 # Check if no arguments are provided

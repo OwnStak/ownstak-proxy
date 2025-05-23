@@ -54,7 +54,10 @@ jobs:
         run: go version
 
       - name: Append next version tag to .env
-        run: ./scripts/version.sh tag "next-$(date +%s)-${GITHUB_SHA:0:6}" # e.g. 1.0.1-next-1712868600-66b6a8
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          TIMESTAMP=$(date +%s)
+          ./scripts/version.sh tag "next-${PR_NUMBER}-${TIMESTAMP}" # e.g. 1.0.1-next-39-1712868600
 
       - name: Build the project
         run: ./scripts/build.sh

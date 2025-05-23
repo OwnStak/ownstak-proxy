@@ -1,0 +1,28 @@
+name: Release Drafter
+
+on:
+    push:
+        branches:
+            - main
+
+permissions:
+    contents: read
+
+jobs:
+    update_release_draft:
+        permissions:
+            # write permission is required to create a github release
+            contents: write
+            # write permission is required for autolabeler
+            # otherwise, read permission is required at least
+            pull-requests: read
+        runs-on: [self-hosted, linux, arm64]
+        container:
+            image: ubuntu:22.04
+        steps:
+            - uses: release-drafter/release-drafter@6.1.0
+              with:
+                  config-name: release-drafter.yml
+                  disable-autolabeler: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
