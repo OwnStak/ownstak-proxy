@@ -51,8 +51,8 @@ func (mc *MiddlewaresChain) executeChainOnRequest(ctx *RequestContext) {
 			stop = false
 		})
 
-		// If stop flag is set, exit the loop
-		if stop {
+		// If stop flag is set or there's an error, exit the loop
+		if stop || ctx.ErrorStatus != 0 {
 			break
 		}
 	}

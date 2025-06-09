@@ -28,19 +28,19 @@ import (
 )
 
 type Server struct {
-	host           string
-	httpPort       string
-	httpsPort      string
-	certFile       string
-	keyFile        string
-	caFile         string
-	readTimeout    time.Duration
-	writeTimeout   time.Duration
-	idleTimeout    time.Duration
-	maxHeaderBytes int
-	MiddlewaresChain     *MiddlewaresChain
-	startTime      time.Time
-	serverId       string
+	host             string
+	httpPort         string
+	httpsPort        string
+	certFile         string
+	keyFile          string
+	caFile           string
+	readTimeout      time.Duration
+	writeTimeout     time.Duration
+	idleTimeout      time.Duration
+	maxHeaderBytes   int
+	MiddlewaresChain *MiddlewaresChain
+	startTime        time.Time
+	serverId         string
 }
 
 func NewServer() *Server {
@@ -125,19 +125,19 @@ func NewServer() *Server {
 	}
 
 	return &Server{
-		host:           host,
-		httpPort:       httpPort,
-		httpsPort:      httpsPort,
-		certFile:       certFile,
-		keyFile:        keyFile,
-		caFile:         caFile,
-		readTimeout:    readTimeout,
-		writeTimeout:   writeTimeout,
-		idleTimeout:    idleTimeout,
-		maxHeaderBytes: maxHeaderBytes,
+		host:             host,
+		httpPort:         httpPort,
+		httpsPort:        httpsPort,
+		certFile:         certFile,
+		keyFile:          keyFile,
+		caFile:           caFile,
+		readTimeout:      readTimeout,
+		writeTimeout:     writeTimeout,
+		idleTimeout:      idleTimeout,
+		maxHeaderBytes:   maxHeaderBytes,
 		MiddlewaresChain: NewMiddlewaresChain(),
-		startTime:      time.Now(),
-		serverId:       serverId,
+		startTime:        time.Now(),
+		serverId:         serverId,
 	}
 }
 
@@ -254,19 +254,25 @@ func (server *Server) handleRequest(httpRes http.ResponseWriter, httpReq *http.R
 
 	// Log incoming requests in debug mode
 	logger.Debug("%s %s", req.Method, req.URL)
-
 	// Create a new Response with the http.ResponseWriter
 	res := NewResponse(httpRes)
-
 	// Create a context containing request, response
 	ctx := NewRequestContext(req, res, server)
+
+	// If there's no provider set, return an error
+	provider := os.Getenv(constants.EnvProvider)
+	if provider == "" {
+		// If no provider is set, return an error
+		ctx.Error(fmt.Sprintf("Unknown provider: The %s environment variable is not set. ", constants.EnvProvider), StatusServiceUnavailable)
+		res.End()
+		return
+	}
 
 	// Execute middleware chain
 	server.MiddlewaresChain.Execute(ctx)
 
 	// Send response to client
 	res.End()
-	res = nil
 }
 
 func (server *Server) generateSelfSignedCert() {
@@ -381,4 +387,9 @@ func (server *Server) StartTime() time.Time {
 // ServerId returns the unique identifier for this server instance
 func (server *Server) ServerId() string {
 	return server.serverId
+}
+
+// HandleRequest is a public wrapper around handleRequest for testing
+func (server *Server) HandleRequest(httpRes http.ResponseWriter, httpReq *http.Request) {
+	server.handleRequest(httpRes, httpReq)
 }

@@ -246,6 +246,7 @@ func Initialize() error {
 	for _, path := range libPaths {
 		if debug {
 			logger.Debug("Trying to load libvips from: %s", path)
+
 		}
 
 		libvips, err = purego.Dlopen(path, purego.RTLD_LAZY|purego.RTLD_GLOBAL)
@@ -255,14 +256,15 @@ func Initialize() error {
 			}
 			break
 		}
+		lastErr = err // Store the error for potential use later
 		if debug {
-			logger.Debug("Failed to load libvips from: %s", path)
+			logger.Debug("Failed to load libvips from: %s - %v", path, err)
 		}
 	}
 
 	// If all paths failed
-	if lastErr != nil {
-		return fmt.Errorf("failed to load libvips. Please ensure libvips is either in ./lib or installed on your system")
+	if libvips == 0 {
+		return fmt.Errorf("failed to load libvips: %v. Please ensure libvips is either in ./lib or installed on your system", lastErr)
 	}
 
 	// Register all libvips functions
@@ -384,7 +386,7 @@ func Initialize() error {
 			"libgcompat.so.0",
 			"libgcompat.so",
 		}
-	
+
 		for _, path := range libcPaths {
 			logger.Debug("Trying to load libc from: %s", path)
 			libc, err := purego.Dlopen(path, purego.RTLD_LAZY|purego.RTLD_GLOBAL)

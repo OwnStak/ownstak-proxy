@@ -6,7 +6,7 @@ var (
 	// See: scripts/build.sh
 	AppName    = "OwnStak Proxy DEV"
 	Version    = "0.0.0"
-	ConsoleURL = "https://dev.ownstak.com"
+	ConsoleURL = "https://console.dev.ownstak.com"
 	SupportURL = "https://ownstak.com/support"
 	Mode       = "development" // "development" or "production" (boolean would be better, but linker doesn't seem to support it with -X flag)
 	// The prefix all our internal endpoints.
@@ -36,8 +36,11 @@ const (
 	EnvGoMemLimit = "GOMEMLIMIT" // e.g. 1024MiB, heap allocated memory size that Golang garbage collector will try to reach if possible
 
 	// AWS Lambda middleware
-	EnvAWSAccountId = "AWS_ACCOUNT_ID"
-	EnvAWSRegion    = "AWS_REGION"
+	EnvAWSAccountId             = "AWS_ACCOUNT_ID"
+	EnvAWSRegion                = "AWS_REGION"
+	EnvAWSLambdaEndpoint        = "AWS_LAMBDA_ENDPOINT"
+	EnvAWSOrganizationsEndpoint = "AWS_ORGANIZATIONS_ENDPOINT"
+	EnvAWSStSEndpoint           = "AWS_STS_ENDPOINT"
 
 	// VIPS
 	EnvVipsDebug        = "VIPS_DEBUG"

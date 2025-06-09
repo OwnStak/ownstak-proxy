@@ -146,7 +146,7 @@ func (res *Response) End() bool {
 	if flusher, ok := res.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
-	res.Clear()
+
 	return true
 }
 

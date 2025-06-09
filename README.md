@@ -25,6 +25,7 @@ All internal endpoints are prefixed with `/__ownstak__/` to prevent collisions w
 ## Requirements
 - **GoLang 1.22+**
 - **glib/glibc/libc6-compat** - *Usually it's part of the system. Just minimal Alpine Linux images don't have it.*
+- **NodeJS >= 18.x** - For mocks and E2E tests
 
 ## Installation
 ### 1. Clone the repository
@@ -112,7 +113,36 @@ Middlewares are always executed in the order they are registered in `main.go`.
 Each middleware can perform actions during either the `onRequest` or `onResponse` phase and then pass control to the next middleware in the chain (for example `RequestIdMiddleware`). 
 Alternatively, a middleware can return early, skipping all subsequent middlewares in the current phase, and stream the response directly to the client (for example `ImageOptimizerMiddleware`). The streaming is disabled by default and response is buffered for other middlewares in row.
 
-![Badge](proxy-diagram.svg)
+```mermaid
+sequenceDiagram
+    participant Request
+    participant RequestIdMiddleware
+    participant ImageOptimizerMiddleware
+    participant FollowRedirectMiddleware
+    participant AwsLambdaMiddleware
+    participant Response
+
+    Request->>RequestIdMiddleware: onRequest() logic
+    RequestIdMiddleware->>ImageOptimizerMiddleware: next()
+    ImageOptimizerMiddleware->>FollowRedirectMiddleware: next()
+    FollowRedirectMiddleware->>AwsLambdaMiddleware: next()
+    AwsLambdaMiddleware-->>FollowRedirectMiddleware: return
+    FollowRedirectMiddleware-->>ImageOptimizerMiddleware: return
+    ImageOptimizerMiddleware-->>RequestIdMiddleware: return
+    RequestIdMiddleware-->>Request: return
+
+    Note over ImageOptimizerMiddleware: exit onRequest phase early
+
+    AwsLambdaMiddleware->>AwsLambdaMiddleware: onResponse() logic
+    AwsLambdaMiddleware->>FollowRedirectMiddleware: next()
+    FollowRedirectMiddleware->>FollowRedirectMiddleware: onResponse() logic
+    Note over FollowRedirectMiddleware: exit onResponse early and stream
+    FollowRedirectMiddleware->>ImageOptimizerMiddleware: next()
+    ImageOptimizerMiddleware->>ImageOptimizerMiddleware: onResponse() logic
+    ImageOptimizerMiddleware->>RequestIdMiddleware: next()
+    RequestIdMiddleware->>RequestIdMiddleware: onResponse() logic
+    RequestIdMiddleware->>Response: return
+```
 
 ## Stable release
 To release a new version, you need to create a new release in the GitHub UI.

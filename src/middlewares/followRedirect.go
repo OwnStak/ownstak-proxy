@@ -7,16 +7,34 @@ import (
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
 	"strings"
+	"time"
 )
 
 // FollowRedirectMiddleware allows to proxy requests to any HTTP/HTTPS server
 type FollowRedirectMiddleware struct {
 	maxRedirects int
+	client       *http.Client
 }
 
 func NewFollowRedirectMiddleware() *FollowRedirectMiddleware {
+	maxRedirects := 3
+
+	// Create a custom HTTP client with redirect policy
+	client := &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 2 * time.Hour, // Fetch with max timeout of 2 hours for large files (default is unlimited)
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxRedirects {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+
 	return &FollowRedirectMiddleware{
-		maxRedirects: 3,
+		maxRedirects: maxRedirects,
+		client:       client,
 	}
 }
 
@@ -30,130 +48,123 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	redirectURL := ctx.Response.Headers.Get(server.HeaderLocation)
 	followRedirect := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)
 
-	// If the response is a redirect and X-Follow-Redirect header is true, we need to pass it to the next FollowRedirectMiddleware and follow it.
+	// If response is not a redirect or X-Follow-Redirect header is false, continue to next middleware
+	if redirectURL == "" || (followRedirect != "true" && followRedirect != "1") {
+		next()
+		return
+	}
+
+	logger.Debug("Following redirect to '%s'", redirectURL)
 	// e.g: 302 Location: https://site-bucket.s3.amazonaws.com/site-125/index.html
-	if redirectURL != "" && (followRedirect == "true" || followRedirect == "1") {
-		logger.Debug("Following redirect to '%s'", redirectURL)
 
-		// Preserve our internal headers from existing response
-		// in the final response for debugging purposes
-		internalHeaders := make(http.Header)
-		for k, v := range ctx.Response.Headers {
-			if strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
-				internalHeaders[k] = v
-			}
+	// Preserve our internal headers from existing response
+	// in the final response for debugging purposes
+	internalHeaders := make(http.Header)
+	for k, v := range ctx.Response.Headers {
+		if strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
+			internalHeaders[k] = v
 		}
+	}
 
-		ctx.Response.ClearBody()
+	ctx.Response.ClearBody()
 
-		// Remove headers that can cause issues after merging
-		ctx.Response.Headers.Del(server.HeaderLocation)
-		ctx.Response.Headers.Del(server.HeaderContentLength)
-		ctx.Response.Headers.Del(server.HeaderContentType)
-		ctx.Response.Headers.Del(server.HeaderContentEncoding)
-		ctx.Response.Headers.Del(server.HeaderTransferEncoding)
-		ctx.Response.Headers.Del(server.HeaderContentDisposition)
+	// Remove headers that can cause issues after merging
+	ctx.Response.Headers.Del(server.HeaderLocation)
+	ctx.Response.Headers.Del(server.HeaderContentLength)
+	ctx.Response.Headers.Del(server.HeaderContentType)
+	ctx.Response.Headers.Del(server.HeaderContentEncoding)
+	ctx.Response.Headers.Del(server.HeaderTransferEncoding)
+	ctx.Response.Headers.Del(server.HeaderContentDisposition)
 
-		// If X-Own-Merge-Headers is not true, clear all headers from the lambda
-		// response and keep only our internal headers
-		if ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders) != "true" {
-			ctx.Response.ClearHeaders()
-			ctx.Response.Headers = internalHeaders
-			ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "merge-headers=false")
-		} else {
-			ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "merge-headers=true")
+	// If X-Own-Merge-Headers is not true, clear all headers from the lambda
+	// response and keep only our internal headers
+	if ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders) != "true" {
+		ctx.Response.ClearHeaders()
+		ctx.Response.Headers = internalHeaders
+		ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "merge-headers=false")
+	} else {
+		ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "merge-headers=true")
+	}
+
+	// Remove X-Own-Merge-Headers header, it's not needed anymore
+	ctx.Response.Headers.Del(server.HeaderXOwnMergeHeaders)
+	// Clear X-Own-Follow-Redirect header, it's not needed anymore
+	ctx.Response.Headers.Del(server.HeaderXOwnFollowRedirect)
+
+	// Add debug information about the redirect
+	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "follow-redirect-status="+fmt.Sprintf("%d", ctx.Response.Status))
+	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "follow-redirect-url="+redirectURL)
+
+	// Normalize the redirect URL (convert relative to absolute if needed)
+	redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)
+
+	// Enable streaming for the response
+	ctx.Response.EnableStreaming()
+
+	// Start a GET request with streaming
+	req, err := http.NewRequest("GET", redirectURL, nil)
+	if err != nil {
+		errorMessage := fmt.Sprintf("Failed to create request for redirect to '%s': %v", redirectURL, err)
+		ctx.Error(errorMessage, http.StatusInternalServerError)
+		return
+	}
+
+	// Copy headers from the original request
+	for k, v := range ctx.Request.Headers {
+		if k != server.HeaderHost && !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
+			req.Header.Set(k, v[0])
 		}
+	}
 
-		// Remove X-Own-Merge-Headers header, it's not needed anymore
-		ctx.Response.Headers.Del(server.HeaderXOwnMergeHeaders)
-		// Clear X-Own-Follow-Redirect header, it's not needed anymore
-		ctx.Response.Headers.Del(server.HeaderXOwnFollowRedirect)
+	// Execute the request
+	resp, err := m.client.Do(req)
+	if err != nil {
+		errorMessage := fmt.Sprintf("Failed to follow redirect to '%s': %v", redirectURL, err)
+		ctx.Error(errorMessage, http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
 
-		// Add debug information about the redirect
-		ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "follow-redirect-status="+fmt.Sprintf("%d", ctx.Response.Status))
-		ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "follow-redirect-url="+redirectURL)
-
-		// Normalize the redirect URL (convert relative to absolute if needed)
-		redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)
-
-		// Create a custom HTTP client with redirect policy
-		client := &http.Client{
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= m.maxRedirects {
-					return http.ErrUseLastResponse
-				}
-				return nil
-			},
+	// Set the response status and merge headers
+	ctx.Response.Status = resp.StatusCode
+	for k, v := range resp.Header {
+		if !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
+			ctx.Response.Headers.Set(k, v[0])
 		}
+	}
 
-		// Enable streaming for the response
-		ctx.Response.EnableStreaming()
+	// Copy content information headers
+	if contentLength := resp.Header.Get(server.HeaderContentLength); contentLength != "" {
+		ctx.Response.Headers.Set(server.HeaderContentLength, contentLength)
+	}
+	if contentType := resp.Header.Get(server.HeaderContentType); contentType != "" {
+		ctx.Response.Headers.Set(server.HeaderContentType, contentType)
+	}
 
-		// Start a GET request with streaming
-		req, err := http.NewRequest("GET", redirectURL, nil)
-		if err != nil {
-			errorMessage := fmt.Sprintf("Failed to create request for redirect to '%s': %v", redirectURL, err)
-			ctx.Error(errorMessage, http.StatusInternalServerError)
-			return
-		}
-
-		// Copy headers from the original request
-		for k, v := range ctx.Request.Headers {
-			if k != server.HeaderHost && !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
-				req.Header.Set(k, v[0])
-			}
-		}
-
-		// Execute the request
-		resp, err := client.Do(req)
-		if err != nil {
-			errorMessage := fmt.Sprintf("Failed to follow redirect to '%s': %v", redirectURL, err)
-			ctx.Error(errorMessage, http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Set the response status and merge headers
-		ctx.Response.Status = resp.StatusCode
-		for k, v := range resp.Header {
-			if !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
-				ctx.Response.Headers.Set(k, v[0])
-			}
-		}
-
-		// Copy content information headers
-		if contentLength := resp.Header.Get(server.HeaderContentLength); contentLength != "" {
-			ctx.Response.Headers.Set(server.HeaderContentLength, contentLength)
-		}
-		if contentType := resp.Header.Get(server.HeaderContentType); contentType != "" {
-			ctx.Response.Headers.Set(server.HeaderContentType, contentType)
-		}
-
-		// The files on S3 can be very large, that's why we need to stream the response
-		// back to client right away and not buffer it in memory for other middlewares.
-		ctx.Response.EnableStreaming()
-		buffer := make([]byte, 32*1024) // 32KB chunks
-		for {
-			n, err := resp.Body.Read(buffer)
-			if n > 0 {
-				// Write the chunk to the response
-				_, writeErr := ctx.Response.Write(buffer[:n])
-				if writeErr != nil {
-					// Client peer is gone, stop streaming
-					break
-				}
-			}
-
-			if err != nil {
-				if err != io.EOF {
-					logger.Error("Error reading from redirect response: %v", err)
-				}
+	// The files on S3 can be very large, that's why we need to stream the response
+	// back to client right away and not buffer it in memory for other middlewares.
+	ctx.Response.EnableStreaming()
+	buffer := make([]byte, 32*1024) // 32KB chunks
+	for {
+		n, err := resp.Body.Read(buffer)
+		if n > 0 {
+			// Write the chunk to the response
+			_, writeErr := ctx.Response.Write(buffer[:n])
+			if writeErr != nil {
+				// Client peer is gone, stop streaming
 				break
 			}
 		}
 
-		// If the response was streamed, no other middlewares can be executed
+		if err != nil {
+			if err != io.EOF {
+				logger.Error("Error reading from redirect response: %v", err)
+			}
+			break
+		}
 	}
+
+	// No other middlewares can be executed, response is already streamed
 }
 
 // NormalizeRedirectURL converts a potentially relative URL to an absolute URL

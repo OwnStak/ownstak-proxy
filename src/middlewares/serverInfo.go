@@ -2,8 +2,6 @@ package middlewares
 
 import (
 	"encoding/json"
-	"fmt"
-	"os"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
@@ -54,14 +52,6 @@ func NewServerInfoMiddleware() *ServerInfoMiddleware {
 
 // OnRequest handles the request phase
 func (m *ServerInfoMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
-	// If there's no provider set, return an error
-	provider := os.Getenv(constants.EnvProvider)
-	if provider == "" {
-		// If no provider is set, return an error
-		ctx.Error(fmt.Sprintf("Unknown provider: The %s environment variable is not set. ", constants.EnvProvider), server.StatusServiceUnavailable)
-		return
-	}
-
 	// Only process requests to the internal info path
 	if ctx.Request.Path != constants.InternalPathPrefix+"/info" {
 		// Not our path, continue to the next middleware

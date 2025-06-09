@@ -1,0 +1,16 @@
+{
+    "name": "ownstak-proxy-mocks",
+    "version": "1.0.0",
+    "description": "Mock AWS services for OwnStak Proxy testing",
+    "type": "module",
+    "scripts": {
+        "stop": "npx kill-port 4001 4002 4003 > /dev/null 2>&1",
+        "start:lambda": "PORT=4001 node aws-lambda.js > /tmp/aws-lambda.log 2>&1 &",
+        "start:organizations": "PORT=4002 node aws-organizations.js > /tmp/aws-organizations.log 2>&1 &",
+        "start:sts": "PORT=4003 node aws-sts.js > /tmp/aws-sts.log 2>&1 &",
+        "start": "npm run stop && npm run start:lambda && npm run start:organizations && npm run start:sts && echo 'All AWS mocks started in background'"
+    },
+    "dependencies": {
+        "mime": "4.0.7"
+    }
+}

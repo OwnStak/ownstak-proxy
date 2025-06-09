@@ -15,8 +15,9 @@ func main() {
 	godotenv.Load(".env", ".env.local")
 
 	// Log the app info and start the server
+	pid := os.Getpid()
 	provider := os.Getenv(constants.EnvProvider)
-	logger.Info("%s, Version: %s, Mode: %s, Provider: %s", constants.AppName, constants.Version, constants.Mode, provider)
+	logger.Info("%s, Version: %s, Mode: %s, Provider: %s, PID: %d", constants.AppName, constants.Version, constants.Mode, provider, pid)
 	server.NewServer().
 		Use(middlewares.NewHealthcheckMiddleware()).
 		Use(middlewares.NewRequestIdMiddleware()).

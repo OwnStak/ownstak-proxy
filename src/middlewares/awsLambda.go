@@ -101,14 +101,64 @@ func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 		region = envRegion
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
+	// Configure AWS options for potential endpoint overrides
+	configOptions := []func(*config.LoadOptions) error{
+		config.WithRegion(region),
+		config.WithHTTPClient(http.DefaultClient),
+	}
+
+	// Add endpoint resolver for testing/mocking if custom endpoints are set
+	lambdaEndpoint := os.Getenv(constants.EnvAWSLambdaEndpoint)
+	stsEndpoint := os.Getenv(constants.EnvAWSStSEndpoint)
+	orgsEndpoint := os.Getenv(constants.EnvAWSOrganizationsEndpoint)
+
+	// Use custom mock endpoints if set
+	if lambdaEndpoint != "" || stsEndpoint != "" || orgsEndpoint != "" {
+		configOptions = append(configOptions, config.WithEndpointResolverWithOptions(
+			aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+				if service == "Lambda" && lambdaEndpoint != "" {
+					logger.Debug("Calling custom Lambda endpoint: %s", lambdaEndpoint)
+					return aws.Endpoint{
+						URL:           lambdaEndpoint,
+						SigningRegion: region,
+					}, nil
+				}
+				if service == "STS" && stsEndpoint != "" {
+					logger.Debug("Calling custom STS endpoint: %s", stsEndpoint)
+					return aws.Endpoint{
+						URL:           stsEndpoint,
+						SigningRegion: region,
+					}, nil
+				}
+				if service == "Organizations" && orgsEndpoint != "" {
+					logger.Debug("Calling custom Organizations endpoint: %s", orgsEndpoint)
+					return aws.Endpoint{
+						URL:           orgsEndpoint,
+						SigningRegion: region,
+					}, nil
+				}
+				// Return empty endpoint to use default AWS endpoint for this service
+				return aws.Endpoint{}, &aws.EndpointNotFoundError{}
+			}),
+		))
+	}
+
+	// Load AWS configuration with custom options
+	awsConfig, err := config.LoadDefaultConfig(
+		context.Background(),
+		configOptions...,
+	)
+
 	if err != nil {
 		logger.Error("Failed to load AWS SDK config: %v", err)
 		return nil
 	}
 
+	// Create service clients with potential endpoint overrides
 	lambdaClient := lambda.NewFromConfig(awsConfig)
+
 	orgsClient := organizations.NewFromConfig(awsConfig)
+
 	stsClient := sts.NewFromConfig(awsConfig)
 
 	return &AWSLambdaMiddleware{
@@ -228,7 +278,12 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 		// If the Lambda function was not found, it was probably retired.
 		// In this case, we will redirect the user to the OwnStak Console with host passed as a query parameter.
 		if strings.Contains(errorMessage, "ResourceNotFoundException") {
-			redirectURL := fmt.Sprintf("%s/revive?host=%s", constants.ConsoleURL, ctx.Request.Host)
+			consoleUrl := constants.ConsoleURL       // e.g: https://console.ownstak.link
+			originalUrl := ctx.Request.OriginalURL   // e.g: https://ecommerce.com/products/123
+			originalHost := ctx.Request.OriginalHost // e.g: ecommerce.com
+			host := ctx.Request.Host                 // e.g: ecommerce-default-123.aws-primary.org.ownstak.link
+
+			redirectURL := fmt.Sprintf("%s/revive?host=%s&originalHost=%s&originalUrl=%s", consoleUrl, host, originalHost, originalUrl)
 			ctx.Response.Headers.Set(server.HeaderLocation, redirectURL)
 			ctx.Response.Status = server.StatusTemporaryRedirect
 			return

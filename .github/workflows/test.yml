@@ -1,0 +1,52 @@
+name: Commit CI
+
+on:
+  push:
+    # only trigger on branches, not on tags
+    branches: '**'
+
+# Stop previous runs when new commit is pushed into the MR
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: 1.23.0
+  DEBIAN_FRONTEND: noninteractive
+
+defaults:
+    run:
+        shell: bash
+
+jobs:
+    format-check:
+        name: Tests & format check
+        runs-on: [self-hosted, linux, arm64]
+        timeout-minutes: 15
+        continue-on-error: true
+        container:
+            image: node:20
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup cache
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      node_modules
+                      ~/.npm
+                  key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+                  restore-keys: |
+                      ${{ runner.os }}-node-${{ env.NODE_VERSION }}-
+
+            - name: Install Go ${{ env.GO_VERSION }}
+              uses: actions/setup-go@v5
+              with:
+                go-version: ${{ env.GO_VERSION }}
+
+            - name: Install dependencies
+              run: make install
+
+            - name: Run tests
+              run: make test

@@ -101,11 +101,23 @@ type ImageOptimizerMiddleware struct {
 	// Channel to control concurrent image processing and fetching
 	fetchQueue   chan struct{}
 	processQueue chan struct{}
+	client       *http.Client
 }
 
 func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
 	// Initialize libvips
 	enabled := true
+
+	// Create an HTTP client that can handle both HTTP and HTTPS
+	client := &http.Client{
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 20 * time.Second, // Fetch with timeout of 20 seconds (default is unlimited)
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Allow self-signed certificates
+			},
+		},
+	}
+
 	processConcurrency := 1
 	fetchConcurrency := 10
 
@@ -128,6 +140,7 @@ func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
 		enabled:      enabled,
 		fetchQueue:   fetchQueue,
 		processQueue: processQueue,
+		client:       client,
 	}
 }
 
@@ -209,15 +222,6 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 		return
 	}
 
-	// Create an HTTP client that can handle both HTTP and HTTPS
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // Allow self-signed certificates
-			},
-		},
-	}
-
 	// Wait for an available slot in the fetch queue
 	// before we try to fetch the image.
 	select {
@@ -232,9 +236,13 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	// Fetch the image
 	fetchStartTime := time.Now()
 	logger.Debug("Image Optimizer - Fetching image from %s", parsedURL.String())
-	resp, err := client.Get(parsedURL.String())
+	resp, err := m.client.Get(parsedURL.String())
 	if err != nil {
 		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to fetch image: %v", err), http.StatusBadRequest)
+		return
+	}
+	if resp.StatusCode != 200 {
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to fetch image: Server returned status code %d", resp.StatusCode), http.StatusBadRequest)
 		return
 	}
 	defer resp.Body.Close()
@@ -280,7 +288,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 		// Set response headers and
 		ctx.Response.Headers.Set(server.HeaderContentType, resp.Header.Get(server.HeaderContentType))
 		ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,fetchDuration=%dms", enabled, urlStr, fetchDuration.Milliseconds()))
+		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=false,url=%s,fetchDuration=%dms", urlStr, fetchDuration.Milliseconds()))
 		ctx.Response.Status = http.StatusOK
 
 		// Enable streaming for the response
@@ -433,8 +441,8 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	// Export image to the specified format
 	ctx.Response.Headers.Set(server.HeaderContentType, "image/"+format)
 	ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-	ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,srcFormat=%s,format=%s,srcWidth=%d,width=%d,srcHeight=%d,height=%d,fetchDuration=%dms,duration=%dms",
-		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, fetchDuration.Milliseconds(), time.Since(startTime).Milliseconds()))
+	ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,srcFormat=%s,format=%s,srcWidth=%d,width=%d,srcHeight=%d,height=%d,quality=%d,fetchDuration=%dms,duration=%dms",
+		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, qualityInt, fetchDuration.Milliseconds(), time.Since(startTime).Milliseconds()))
 	ctx.Response.Status = http.StatusOK
 
 	// Enable streaming for the response

@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"ownstak-proxy/src/constants"
@@ -12,12 +13,21 @@ import (
 )
 
 var (
-	traceLogger = log.New(os.Stdout, "", 0)
-	debugLogger = log.New(os.Stdout, "", 0)
-	infoLogger  = log.New(os.Stdout, "", 0)
-	warnLogger  = log.New(os.Stdout, "", 0)
-	errorLogger = log.New(os.Stderr, "", 0)
-	fatalLogger = log.New(os.Stderr, "", 0)
+	// Default output writers
+	defaultStdout io.Writer = os.Stdout
+	defaultStderr io.Writer = os.Stderr
+
+	// Current output writers
+	currentStdout io.Writer = defaultStdout
+	currentStderr io.Writer = defaultStderr
+
+	// Loggers
+	traceLogger = log.New(currentStdout, "", 0)
+	debugLogger = log.New(currentStdout, "", 0)
+	infoLogger  = log.New(currentStdout, "", 0)
+	warnLogger  = log.New(currentStdout, "", 0)
+	errorLogger = log.New(currentStderr, "", 0)
+	fatalLogger = log.New(currentStderr, "", 0)
 )
 
 // ANSI color codes
@@ -41,13 +51,28 @@ const (
 // Current log level
 var currentLogLevel = INFO
 
-func init() {
-	// Load .env file if it exists
-	godotenv.Load(".env", ".env.local")
+// SetOutput sets the output writers for all loggers
+func SetOutput(stdout, stderr io.Writer) {
+	currentStdout = stdout
+	currentStderr = stderr
 
-	// Get log level from environment variable
-	logLevel := os.Getenv(constants.EnvLogLevel)
-	switch strings.ToLower(logLevel) {
+	// Update all loggers with new writers
+	traceLogger.SetOutput(stdout)
+	debugLogger.SetOutput(stdout)
+	infoLogger.SetOutput(stdout)
+	warnLogger.SetOutput(stdout)
+	errorLogger.SetOutput(stderr)
+	fatalLogger.SetOutput(stderr)
+}
+
+// ResetOutput resets the output writers to the default stdout/stderr
+func ResetOutput() {
+	SetOutput(defaultStdout, defaultStderr)
+}
+
+// SetLogLevel sets the log level
+func SetLogLevel(level string) {
+	switch strings.ToLower(level) {
 	case "debug":
 		currentLogLevel = DEBUG
 	case "info":
@@ -61,6 +86,15 @@ func init() {
 	default:
 		currentLogLevel = INFO
 	}
+}
+
+func init() {
+	// Load .env file if it exists
+	godotenv.Load(".env", ".env.local")
+
+	// Get log level from environment variable
+	logLevel := os.Getenv(constants.EnvLogLevel)
+	SetLogLevel(logLevel)
 }
 
 // Log formats and logs the message with the given level and color

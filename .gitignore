@@ -1,5 +1,6 @@
 # Ouput directory
 dist/
+bin/
 
 # Certs
 certs/
@@ -13,3 +14,6 @@ tmp/
 
 # .ENV local file
 .env.local
+
+# Node modules
+node_modules/
