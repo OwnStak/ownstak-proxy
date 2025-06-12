@@ -1,7 +1,6 @@
 name: Release Next
 on:
   pull_request:
-    
 
 # Stop previous runs when new commit is pushed into the MR
 concurrency:
@@ -23,6 +22,7 @@ jobs:
   release-next:
     name: Build and release
     timeout-minutes: 15
+    if: github.actor != 'dependabot[bot]'
     runs-on: [self-hosted, linux, arm64]
     container:
       image: ubuntu:22.04
