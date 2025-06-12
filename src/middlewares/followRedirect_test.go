@@ -193,8 +193,7 @@ func TestFollowRedirectMiddleware(t *testing.T) {
 		middleware.OnResponse(ctx, func() {})
 
 		// Verify internal headers are preserved (in debug headers)
-		debugHeaders := ctx.Response.Headers[server.HeaderXOwnProxyDebug]
-		assert.NotEmpty(t, debugHeaders, "debug headers should be set")
+		assert.Equal(t, "test-value", ctx.Response.Headers.Get("X-Own-Test-Header"))
 	})
 
 	t.Run("should handle X-Own-Follow-Redirect with value 'true'", func(t *testing.T) {

@@ -135,7 +135,20 @@ async function handleInvoke(req, res) {
     } catch (e) {
       payload = { rawPath: '/' };
     }
-        
+
+    // Handle ownstak-404 error
+    if (functionName === 'ownstak-404') {
+      res.writeHead(404, { 
+        'Content-Type': 'application/json',
+        'x-amzn-RequestId': generateRequestId(),
+        'x-amz-function-error': 'ResourceNotFoundException'
+      });
+      return res.end(JSON.stringify({
+        "__type":  "ResourceNotFoundException",
+        "message": "The resource you requested does not exist."
+      }));
+    }
+
     // Get the function callback or use default
     const functionCallback = functions[functionName] || functions['default'];
     
@@ -165,70 +178,6 @@ async function handleInvoke(req, res) {
       };
       
       res.end(JSON.stringify(errorPayload));
-    }
-  });
-}
-
-// Handle Streaming Invoke requests
-async function handleStreamingInvoke(req, res) {
-  const pathname = url.parse(req.url).pathname;
-  const pathParts = pathname.split('/');
-  
-  // Extract function name from path: /2021-07-20/functions/:functionName/response-stream-invocations
-  if (pathParts.length < 5 || pathParts[4] !== 'response-stream-invocations') {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: 'Invalid request path' }));
-    return;
-  }
-  
-  const functionName = parseFunctionName(pathParts[3]);
-  console.log(`[Lambda Mock] Streaming invoke request: ${functionName}`);
-  
-  // Read request body
-  let body = '';
-  req.on('data', chunk => {
-    body += chunk.toString();
-  });
-  
-  req.on('end', async () => {
-    let payload;
-    try {
-      payload = JSON.parse(body);
-    } catch (e) {
-      payload = { rawPath: '/' };
-    }
-    
-    // Get the function callback or use default
-    const functionCallback = functions[functionName] || functions['default'];
-    
-    try {
-      // Call the function with the payload
-      const response = await functionCallback(payload);
-      
-      console.log(`[Lambda Mock] Streaming response: ${response.statusCode}`);
-      res.writeHead(200, { 
-        'Content-Type': 'application/vnd.awslambda.http-integration-response',
-        'x-amzn-RequestId': generateRequestId()
-      });
-      res.write(JSON.stringify(response));
-      res.end();
-    } catch (error) {
-      console.error(`[Lambda Mock] Function error:`, error);
-      res.writeHead(200, { 
-        'Content-Type': 'application/vnd.awslambda.http-integration-response',
-        'x-amzn-RequestId': generateRequestId(),
-        'x-amz-function-error': 'Unhandled'
-      });
-      
-      // AWS Lambda error response format
-      const errorPayload = {
-        errorType: error.errorType || 'Runtime.HandlerError',
-        errorMessage: error.message || 'Unknown error',
-        trace: error.stack ? error.stack.split('\n') : []
-      };
-      
-      res.write(JSON.stringify(errorPayload));
-      res.end();
     }
   });
 }
@@ -266,10 +215,8 @@ const server = http.createServer((req, res) => {
   
   if (pathname === '/health') {
     handleHealth(req, res);
-  } else if (pathname.includes('/invocations') && !pathname.includes('response-stream')) {
+  } else if (pathname.includes('/invocations')){
     handleInvoke(req, res);
-  } else if (pathname.includes('/response-stream-invocations')) {
-    handleStreamingInvoke(req, res);
   } else {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ message: 'Not Found' }));

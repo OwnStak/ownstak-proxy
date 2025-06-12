@@ -266,8 +266,8 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 	response, err := m.invokeLambda(context.Background(), lambdaArn, event, asyncMode)
 	invocationDuration := time.Since(invocationStartTime)
 
-	// Set Lambda invocation duration header
-	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-duration="+invocationDuration.String())
+	// Store lambda invocation duration for debug purposes
+	ctx.Debug("lambda-duration="+invocationDuration.String())
 
 	// Handle invocation errors
 	if err != nil {
@@ -280,10 +280,9 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 		if strings.Contains(errorMessage, "ResourceNotFoundException") {
 			consoleUrl := constants.ConsoleURL       // e.g: https://console.ownstak.link
 			originalUrl := ctx.Request.OriginalURL   // e.g: https://ecommerce.com/products/123
-			originalHost := ctx.Request.OriginalHost // e.g: ecommerce.com
 			host := ctx.Request.Host                 // e.g: ecommerce-default-123.aws-primary.org.ownstak.link
 
-			redirectURL := fmt.Sprintf("%s/revive?host=%s&originalHost=%s&originalUrl=%s", consoleUrl, host, originalHost, originalUrl)
+			redirectURL := fmt.Sprintf("%s/revive?host=%s&originalUrl=%s", consoleUrl, host, originalUrl)
 			ctx.Response.Headers.Set(server.HeaderLocation, redirectURL)
 			ctx.Response.Status = server.StatusTemporaryRedirect
 			return
@@ -339,10 +338,10 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 		return
 	}
 
-	// Store details for the response phase
-	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-name="+lambdaName)
-	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-alias="+lambdaAlias)
-	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "lambda-region="+m.awsConfig.Region)
+	// Store debug details
+	ctx.Debug("lambda-name="+lambdaName)
+	ctx.Debug("lambda-alias="+lambdaAlias)
+	ctx.Debug("lambda-region="+m.awsConfig.Region)
 
 	// No need to call next() as we've fully handled the request
 }

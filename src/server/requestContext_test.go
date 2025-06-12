@@ -13,8 +13,6 @@ func TestRequestContext(t *testing.T) {
 		t.Run("should create context with request and response", func(t *testing.T) {
 			req, err := http.NewRequest("GET", "http://example.com/path", nil)
 			assert.NoError(t, err)
-			req.Host = "example.com"
-			req.RemoteAddr = "192.168.1.1:12345"
 
 			serverReq, err := NewRequest(req)
 			assert.NoError(t, err)
@@ -33,8 +31,6 @@ func TestRequestContext(t *testing.T) {
 		t.Run("should set error message and status", func(t *testing.T) {
 			req, err := http.NewRequest("GET", "http://example.com/path", nil)
 			assert.NoError(t, err)
-			req.Host = "example.com"
-			req.RemoteAddr = "192.168.1.1:12345"
 
 			serverReq, err := NewRequest(req)
 			assert.NoError(t, err)
@@ -47,14 +43,10 @@ func TestRequestContext(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, ctx.ErrorStatus)
 			assert.Equal(t, http.StatusBadRequest, ctx.Response.Status)
 		})
-	})
 
-	t.Run("ErrorResponse", func(t *testing.T) {
 		t.Run("should return HTML error when Accept header is HTML", func(t *testing.T) {
 			req, err := http.NewRequest("GET", "http://example.com/path", nil)
 			assert.NoError(t, err)
-			req.Host = "example.com"
-			req.RemoteAddr = "192.168.1.1:12345"
 			req.Header.Set("Accept", "text/html")
 
 			serverReq, err := NewRequest(req)
@@ -72,8 +64,6 @@ func TestRequestContext(t *testing.T) {
 		t.Run("should return JSON error when Accept header is not HTML", func(t *testing.T) {
 			req, err := http.NewRequest("GET", "http://example.com/path", nil)
 			assert.NoError(t, err)
-			req.Host = "example.com"
-			req.RemoteAddr = "192.168.1.1:12345"
 			req.Header.Set("Accept", "application/json")
 
 			serverReq, err := NewRequest(req)
@@ -87,5 +77,55 @@ func TestRequestContext(t *testing.T) {
 			assert.Contains(t, string(ctx.Response.Body), "JSON error message")
 			assert.Equal(t, "application/json", ctx.Response.Headers.Get("Content-Type"))
 		})
+	})
+
+	t.Run("Debug", func(t *testing.T) {
+		t.Run("should append debug value to x-own-proxy-debug header when X-Own-Debug is present in the request", func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://example.com/path", nil)
+			assert.NoError(t, err)
+			req.Header.Set(HeaderXOwnDebug, "test-value")
+
+			serverReq, err := NewRequest(req)
+			assert.NoError(t, err)
+			serverResp := NewResponse()
+
+			ctx := NewRequestContext(serverReq, serverResp, nil)
+			ctx.Debug("test1=value1")
+			ctx.Debug("test2=value2")
+
+			assert.Equal(t, "test1=value1,test2=value2", ctx.Response.Headers.Get(HeaderXOwnProxyDebug))
+		})
+
+		t.Run("should append debug value to x-own-proxy-debug header when X-Own-Proxy-Debug is present in the request", func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://example.com/path", nil)
+			assert.NoError(t, err)
+			req.Header.Set(HeaderXOwnProxyDebug, "test-value")
+
+			serverReq, err := NewRequest(req)
+			assert.NoError(t, err)
+			serverResp := NewResponse()
+
+			ctx := NewRequestContext(serverReq, serverResp, nil)
+			ctx.Debug("test1=value1")
+			ctx.Debug("test2=value2")
+
+			assert.Equal(t, "test1=value1,test2=value2", ctx.Response.Headers.Get(HeaderXOwnProxyDebug))
+		})
+
+		t.Run("should not append debug value to x-own-proxy-debug header when X-Own-Debug is not present in the request", func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://example.com/path", nil)
+			assert.NoError(t, err)
+
+			serverReq, err := NewRequest(req)
+			assert.NoError(t, err)
+			serverResp := NewResponse()
+
+			ctx := NewRequestContext(serverReq, serverResp, nil)
+			ctx.Debug("test1=value1")
+			ctx.Debug("test2=value2")
+
+			assert.Equal(t, "", ctx.Response.Headers.Get(HeaderXOwnProxyDebug))
+		})
+
 	})
 }

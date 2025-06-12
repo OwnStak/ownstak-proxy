@@ -253,3 +253,16 @@ func ToJsonErrorBody(errorMessage string, errorCode int, requestId string) strin
 
 	return string(jsonData)
 }
+
+// Stores the debug info for given request context.
+// The value is outputed in the response header x-own-proxy-debug when requested.
+// Returns true if the header was appended, false otherwise
+// @example: ctx.Debug("lambda-duration="+invocationDuration.String())
+func (ctx *RequestContext) Debug(value string) bool {
+	if ctx.Request.Headers.Get(HeaderXOwnDebug) == "" && ctx.Request.Headers.Get(HeaderXOwnProxyDebug) == "" {
+		return false
+	}
+
+	ctx.Response.AppendHeader(HeaderXOwnProxyDebug, value)
+	return true
+}

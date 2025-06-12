@@ -81,9 +81,9 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	if ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders) != "true" {
 		ctx.Response.ClearHeaders()
 		ctx.Response.Headers = internalHeaders
-		ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "merge-headers=false")
+		ctx.Debug("merge-headers=false")
 	} else {
-		ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "merge-headers=true")
+		ctx.Debug("merge-headers=true")
 	}
 
 	// Remove X-Own-Merge-Headers header, it's not needed anymore
@@ -91,9 +91,9 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	// Clear X-Own-Follow-Redirect header, it's not needed anymore
 	ctx.Response.Headers.Del(server.HeaderXOwnFollowRedirect)
 
-	// Add debug information about the redirect
-	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "follow-redirect-status="+fmt.Sprintf("%d", ctx.Response.Status))
-	ctx.Response.AppendHeader(server.HeaderXOwnProxyDebug, "follow-redirect-url="+redirectURL)
+	// Store debug information about the redirect
+	ctx.Debug("follow-redirect-status="+fmt.Sprintf("%d", ctx.Response.Status))
+	ctx.Debug("follow-redirect-url="+redirectURL)
 
 	// Normalize the redirect URL (convert relative to absolute if needed)
 	redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)

@@ -962,13 +962,8 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 		// Verify the Location header contains the revive URL
 		location := ctx.Response.Headers.Get("Location")
 		assert.NotEmpty(t, location, "Location header should be set for revive redirect")
-		assert.Contains(t, location, "revive", "Location should contain 'revive'")
-		assert.Contains(t, location, "host=ecommerce-default-123.aws-primary.org.ownstak.link", "Location should contain the host from host/x-own-host header")
-		assert.Contains(t, location, "originalHost=ecommerce.com", "Location should contain the original host from x-forwarded-host/host header")
-		assert.Contains(t, location, "originalUrl=http://ecommerce.com/api/users", "Location should contain the url with original host")
+		assert.Equal(t, "https://console.dev.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://ecommerce.com/api/users", location)
 
-		// Verify that the redirect preserves the original path
-		assert.Contains(t, location, "/api/users", "Location should preserve the original request path")
 	})
 
 	t.Run("should redirect to console when lambda function is not found to original URL from x-forwarded-host", func(t *testing.T) {
@@ -1005,13 +1000,7 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 		// Verify the Location header contains the revive URL
 		location := ctx.Response.Headers.Get("Location")
 		assert.NotEmpty(t, location, "Location header should be set for revive redirect")
-		assert.Contains(t, location, "revive", "Location should contain 'revive'")
-		assert.Contains(t, location, "host=ecommerce-default-123.aws-primary.org.ownstak.link", "Location should contain the host from host/x-own-host header")
-		assert.Contains(t, location, "originalHost=original-ecommerce.com", "Location should contain the original host from x-forwarded-host/host header")
-		assert.Contains(t, location, "originalUrl=http://original-ecommerce.com/api/users", "Location should contain the url with original host")
-
-		// Verify that the redirect preserves the original path
-		assert.Contains(t, location, "/api/users", "Location should preserve the original request path")
+		assert.Equal(t, "https://console.dev.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://original-ecommerce.com/api/users", location)
 	})
 
 	t.Run("should redirect to revive with query parameters preserved", func(t *testing.T) {
@@ -1054,26 +1043,27 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 		assert.Contains(t, location, "category=tech", "Location should preserve query parameters")
 	})
 
-	t.Run("should redirect to revive with POST method and preserve request details", func(t *testing.T) {
+	t.Run("should store debug info in x-own-proxy-debug header", func(t *testing.T) {
 		httpmock.RegisterResponder("POST", `=~^http://localhost:4566/2015-03-31/functions/.*?/invocations$`,
 			func(req *http.Request) (*http.Response, error) {
-				// Simulate AWS Lambda ResourceNotFoundException (404)
-				awsError := map[string]interface{}{
-					"__type":  "ResourceNotFoundException",
-					"message": "The resource you requested does not exist.",
+				lambdaResponse := map[string]interface{}{
+					"statusCode": 404,
+					"headers": map[string]string{
+						"Content-Type": "text/html",
+					},
+					"body": `<h1>Hello world</h1>`,
 				}
-				errorBytes, _ := json.Marshal(awsError)
-				resp := httpmock.NewBytesResponse(404, errorBytes)
-				resp.Header.Set("Content-Type", "application/x-amz-json-1.1")
+				responseBytes, _ := json.Marshal(lambdaResponse)
+				resp := httpmock.NewBytesResponse(200, responseBytes)
+				resp.Header.Set("Content-Type", "application/json")
 				return resp, nil
 			},
 		)
 
-		req := httptest.NewRequest("POST", "/api/create", strings.NewReader(`{"name":"test","data":"value"}`))
+		req := httptest.NewRequest("GET", "/test", nil)
 		req.Host = "example.com"
-		req.Header.Set(server.HeaderXOwnHost, "deleted-app.aws-primary.org.ownstak.link")
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer token123")
+		req.Header.Set(server.HeaderXOwnHost, "status404-test.aws-primary.org.ownstak.link")
+		req.Header.Set(server.HeaderXOwnDebug, "true")
 		res := httptest.NewRecorder()
 
 		serverReq, err := server.NewRequest(req)
@@ -1083,19 +1073,10 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 
 		middleware.OnRequest(ctx, func() {})
 
-		// Verify it's a temporary redirect to revive
-		assert.Equal(t, server.StatusTemporaryRedirect, ctx.Response.Status)
-
-		// Verify the Location header contains the revive URL
-		location := ctx.Response.Headers.Get("Location")
-		assert.NotEmpty(t, location, "Location header should be set for revive redirect")
-		assert.Contains(t, location, "revive", "Location should contain 'revive'")
-		assert.Contains(t, location, "deleted-app", "Location should contain the app name")
-		assert.Contains(t, location, "/api/create", "Location should preserve the original path")
-
-		// The revive redirect should preserve the original request method in the redirect URL
-		// so the revive system can handle the POST appropriately
-		assert.Contains(t, location, "aws-primary.org.ownstak.link", "Location should contain the original host")
+		assert.Contains(t, ctx.Response.Headers.Get(server.HeaderXOwnProxyDebug), "lambda-duration=")
+		assert.Contains(t, ctx.Response.Headers.Get(server.HeaderXOwnProxyDebug), "lambda-name=")
+		assert.Contains(t, ctx.Response.Headers.Get(server.HeaderXOwnProxyDebug), "lambda-region=")
+		assert.Contains(t, ctx.Response.Headers.Get(server.HeaderXOwnProxyDebug), "lambda-alias=")
 	})
 }
 
