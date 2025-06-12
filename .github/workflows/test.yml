@@ -25,28 +25,23 @@ jobs:
         timeout-minutes: 15
         continue-on-error: true
         container:
-            image: node:20
+            image: node:22
         steps:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: Setup cache
+            - name: 'Cache'
               uses: actions/cache@v4
               with:
-                  path: |
-                      node_modules
-                      ~/.npm
-                  key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
-                  restore-keys: |
-                      ${{ runner.os }}-node-${{ env.NODE_VERSION }}-
+                path: |
+                  ~/go/pkg/mod
+                  ~/.cache/go-build
+                key: ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
 
             - name: Install Go ${{ env.GO_VERSION }}
               uses: actions/setup-go@v5
               with:
                 go-version: ${{ env.GO_VERSION }}
 
-            - name: Install dependencies
-              run: make install
-
             - name: Run tests
-              run: make test
+              run: ./scripts/test.sh
