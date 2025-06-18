@@ -26,7 +26,7 @@ const (
 	HeaderServer             = "Server"
 
 	// Custom OwnStak Proxy headers
-	HeaderXOwnPrefix         = "X-Own-"				   // Prefix for all the OwnStak headers. These headers have special treatment. For example: they're always preserved in res when following a redirect
+	HeaderXOwnPrefix         = "X-Own-"                // Prefix for all the OwnStak headers. These headers have special treatment. For example: they're always preserved in res when following a redirect
 	HeaderXOwnProxy          = "X-Own-Proxy"           // Present in req when is proxied
 	HeaderXOwnProxyVersion   = "X-Own-Proxy-Version"   // Present in req/res headers when the request is proxied
 	HeaderXOwnHost           = "X-Own-Host"            // Works as replacement for Host header and preffered way of specifying the host for the proxy in the req

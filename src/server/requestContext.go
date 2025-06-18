@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/utils"
 	"strings"
 )
 
@@ -59,6 +60,8 @@ func (ctx *RequestContext) Error(errorMessage string, errorStatus int) {
 }
 
 func ToHtmlErrorBody(errorMessage string, errorCode int, requestId string) string {
+	supportUrl := utils.GetEnvWithDefault(constants.EnvSupportURL, "https://ownstak.com/support")
+
 	// Escape special characters to prevent XSS from the messages/header values.
 	errorSegments := strings.Split(errorMessage, ": ")
 	errorMessage = errorSegments[0]
@@ -235,7 +238,7 @@ func ToHtmlErrorBody(errorMessage string, errorCode int, requestId string) strin
 				</div>
 			</body>
 		</html>
-	`, errorCode, errorCode, constants.SupportURL, errorMessage, errorStackTrace, requestId, constants.AppName, constants.Version)
+	`, errorCode, errorCode, supportUrl, errorMessage, errorStackTrace, requestId, constants.AppName, constants.Version)
 }
 
 func ToJsonErrorBody(errorMessage string, errorCode int, requestId string) string {

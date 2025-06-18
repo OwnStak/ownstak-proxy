@@ -6,17 +6,13 @@ import (
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/middlewares"
 	"ownstak-proxy/src/server"
-
-	"github.com/joho/godotenv"
+	"ownstak-proxy/src/utils"
 )
 
 func main() {
-	// Load environment variables from .env file
-	godotenv.Load(".env", ".env.local")
-
 	// Log the app info and start the server
 	pid := os.Getpid()
-	provider := os.Getenv(constants.EnvProvider)
+	provider := utils.GetEnv(constants.EnvProvider)
 	logger.Info("%s, Version: %s, Mode: %s, Provider: %s, PID: %d", constants.AppName, constants.Version, constants.Mode, provider, pid)
 	server.NewServer().
 		Use(middlewares.NewHealthcheckMiddleware()).

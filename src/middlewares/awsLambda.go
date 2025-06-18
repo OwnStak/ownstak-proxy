@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/server"
+	"ownstak-proxy/src/utils"
 	"regexp"
 	"strings"
 	"time"
@@ -86,20 +86,16 @@ type AWSLambdaMiddleware struct {
 
 func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 	// Check AWS credentials before doing anything
-	provider := strings.ToLower(os.Getenv(constants.EnvProvider))
+	provider := utils.GetEnv(constants.EnvProvider)
 	if provider != constants.ProviderAWS {
 		logger.Warn(fmt.Sprintf("Disabling AWS Lambda middleware - The provider doesn't match '%s'", constants.ProviderAWS))
 		return nil
 	}
 
 	// Use the AWS_ACCOUNT_ID environment variable if set
-	accountId := os.Getenv(constants.EnvAWSAccountId)
-
+	accountId := utils.GetEnv(constants.EnvAWSAccountId)
 	// Set default region
-	region := "us-east-1"
-	if envRegion := os.Getenv(constants.EnvAWSRegion); envRegion != "" {
-		region = envRegion
-	}
+	region := utils.GetEnvWithDefault(constants.EnvAWSRegion, "us-east-1")
 
 	// Configure AWS options for potential endpoint overrides
 	configOptions := []func(*config.LoadOptions) error{
@@ -108,9 +104,9 @@ func NewAWSLambdaMiddleware() *AWSLambdaMiddleware {
 	}
 
 	// Add endpoint resolver for testing/mocking if custom endpoints are set
-	lambdaEndpoint := os.Getenv(constants.EnvAWSLambdaEndpoint)
-	stsEndpoint := os.Getenv(constants.EnvAWSStSEndpoint)
-	orgsEndpoint := os.Getenv(constants.EnvAWSOrganizationsEndpoint)
+	lambdaEndpoint := utils.GetEnv(constants.EnvAWSLambdaEndpoint)
+	stsEndpoint := utils.GetEnv(constants.EnvAWSStSEndpoint)
+	orgsEndpoint := utils.GetEnv(constants.EnvAWSOrganizationsEndpoint)
 
 	// Use custom mock endpoints if set
 	if lambdaEndpoint != "" || stsEndpoint != "" || orgsEndpoint != "" {
@@ -210,7 +206,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 	lambdaName := lambdaNameParts[1]
 
 	// Construct the lambda name by adding prefix from environment variable or default to "ownstak"
-	lambdaPrefix := os.Getenv(constants.EnvLambdaFunctionPrefix)
+	lambdaPrefix := utils.GetEnv(constants.EnvLambdaFunctionPrefix)
 	if lambdaPrefix == "" {
 		lambdaPrefix = "ownstak"
 	}
@@ -267,7 +263,7 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 	invocationDuration := time.Since(invocationStartTime)
 
 	// Store lambda invocation duration for debug purposes
-	ctx.Debug("lambda-duration="+invocationDuration.String())
+	ctx.Debug("lambda-duration=" + invocationDuration.String())
 
 	// Handle invocation errors
 	if err != nil {
@@ -278,9 +274,9 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 		// If the Lambda function was not found, it was probably retired.
 		// In this case, we will redirect the user to the OwnStak Console with host passed as a query parameter.
 		if strings.Contains(errorMessage, "ResourceNotFoundException") {
-			consoleUrl := constants.ConsoleURL       // e.g: https://console.ownstak.link
-			originalUrl := ctx.Request.OriginalURL   // e.g: https://ecommerce.com/products/123
-			host := ctx.Request.Host                 // e.g: ecommerce-default-123.aws-primary.org.ownstak.link
+			consoleUrl := utils.GetEnvWithDefault(constants.EnvConsoleURL, "https://console.ownstak.com")
+			originalUrl := ctx.Request.OriginalURL // e.g: https://ecommerce.com/products/123
+			host := ctx.Request.Host               // e.g: ecommerce-default-123.aws-primary.org.ownstak.link
 
 			redirectURL := fmt.Sprintf("%s/revive?host=%s&originalUrl=%s", consoleUrl, host, originalUrl)
 			ctx.Response.Headers.Set(server.HeaderLocation, redirectURL)
@@ -339,9 +335,9 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 	}
 
 	// Store debug details
-	ctx.Debug("lambda-name="+lambdaName)
-	ctx.Debug("lambda-alias="+lambdaAlias)
-	ctx.Debug("lambda-region="+m.awsConfig.Region)
+	ctx.Debug("lambda-name=" + lambdaName)
+	ctx.Debug("lambda-alias=" + lambdaAlias)
+	ctx.Debug("lambda-region=" + m.awsConfig.Region)
 
 	// No need to call next() as we've fully handled the request
 }

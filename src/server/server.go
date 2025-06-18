@@ -20,11 +20,11 @@ import (
 	"syscall"
 	"time"
 
-	"ownstak-proxy/src/constants"
-	"ownstak-proxy/src/logger"
-
 	"github.com/google/uuid"
 	"golang.org/x/net/http2"
+	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
+	"ownstak-proxy/src/utils"
 )
 
 type Server struct {
@@ -48,15 +48,15 @@ func NewServer() *Server {
 	serverId := uuid.New().String()
 
 	// Set default values if environment variables are not set
-	host := os.Getenv(constants.EnvHost)
-	httpPort := os.Getenv(constants.EnvHttpPort)
-	httpsPort := os.Getenv(constants.EnvHttpsPort)
-	certFile := os.Getenv(constants.EnvHttpsCert)
-	keyFile := os.Getenv(constants.EnvHttpsCertKey)
-	caFile := os.Getenv(constants.EnvHttpsCertCa)
+	host := utils.GetEnv(constants.EnvHost)
+	httpPort := utils.GetEnv(constants.EnvHttpPort)
+	httpsPort := utils.GetEnv(constants.EnvHttpsPort)
+	certFile := utils.GetEnv(constants.EnvHttpsCert)
+	keyFile := utils.GetEnv(constants.EnvHttpsCertKey)
+	caFile := utils.GetEnv(constants.EnvHttpsCertCa)
 
 	// Set the maximum time the server will wait for a request from the client
-	readTimeoutStr := os.Getenv(constants.EnvReadTimeout)
+	readTimeoutStr := utils.GetEnv(constants.EnvReadTimeout)
 	readTimeout := 2 * time.Minute // Defaults to 2 minutes
 	if readTimeoutStr != "" {
 		if rt, err := time.ParseDuration(readTimeoutStr); err == nil {
@@ -67,7 +67,7 @@ func NewServer() *Server {
 	}
 
 	// Set the maximum time the server will wait for the client to receive the response
-	writeTimeoutStr := os.Getenv(constants.EnvWriteTimeout)
+	writeTimeoutStr := utils.GetEnv(constants.EnvWriteTimeout)
 	writeTimeout := 2 * time.Hour // Defaults to 2 hours
 	if writeTimeoutStr != "" {
 		if wt, err := time.ParseDuration(writeTimeoutStr); err == nil {
@@ -79,7 +79,7 @@ func NewServer() *Server {
 
 	// Set the maximum time the server will wait for a client to send next requests
 	// when using keep-alive or initial connection
-	idleTimeoutStr := os.Getenv(constants.EnvIdleTimeout)
+	idleTimeoutStr := utils.GetEnv(constants.EnvIdleTimeout)
 	idleTimeout := 60 * time.Second // Defaults to 60 seconds
 	if idleTimeoutStr != "" {
 		if it, err := time.ParseDuration(idleTimeoutStr); err == nil {
@@ -90,7 +90,7 @@ func NewServer() *Server {
 	}
 
 	// Set the maximum total size of accepted request headers in bytes
-	maxHeaderBytesStr := os.Getenv(constants.EnvMaxHeaderBytes)
+	maxHeaderBytesStr := utils.GetEnv(constants.EnvMaxHeaderBytes)
 	maxHeaderBytes := 1024 * 1024 // Defaults to 1MiB
 	if maxHeaderBytesStr != "" {
 		if size, err := strconv.Atoi(maxHeaderBytesStr); err == nil {
@@ -260,7 +260,7 @@ func (server *Server) handleRequest(httpRes http.ResponseWriter, httpReq *http.R
 	ctx := NewRequestContext(req, res, server)
 
 	// If there's no provider set, return an error
-	provider := os.Getenv(constants.EnvProvider)
+	provider := utils.GetEnv(constants.EnvProvider)
 	if provider == "" {
 		// If no provider is set, return an error
 		ctx.Error(fmt.Sprintf("Unknown provider: The %s environment variable is not set. ", constants.EnvProvider), StatusServiceUnavailable)

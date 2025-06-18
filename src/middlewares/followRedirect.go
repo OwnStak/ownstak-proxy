@@ -92,8 +92,8 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	ctx.Response.Headers.Del(server.HeaderXOwnFollowRedirect)
 
 	// Store debug information about the redirect
-	ctx.Debug("follow-redirect-status="+fmt.Sprintf("%d", ctx.Response.Status))
-	ctx.Debug("follow-redirect-url="+redirectURL)
+	ctx.Debug("follow-redirect-status=" + fmt.Sprintf("%d", ctx.Response.Status))
+	ctx.Debug("follow-redirect-url=" + redirectURL)
 
 	// Normalize the redirect URL (convert relative to absolute if needed)
 	redirectURL = m.NormalizeRedirectURL(redirectURL, ctx)

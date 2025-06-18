@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/utils"
 	"strings"
 	"time"
 
@@ -93,7 +94,7 @@ func init() {
 	godotenv.Load(".env", ".env.local")
 
 	// Get log level from environment variable
-	logLevel := os.Getenv(constants.EnvLogLevel)
+	logLevel := utils.GetEnvWithDefault(constants.EnvLogLevel, "info")
 	SetLogLevel(logLevel)
 }
 

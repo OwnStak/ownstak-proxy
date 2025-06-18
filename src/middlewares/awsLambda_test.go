@@ -962,7 +962,7 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 		// Verify the Location header contains the revive URL
 		location := ctx.Response.Headers.Get("Location")
 		assert.NotEmpty(t, location, "Location header should be set for revive redirect")
-		assert.Equal(t, "https://console.dev.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://ecommerce.com/api/users", location)
+		assert.Equal(t, "https://console.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://ecommerce.com/api/users", location)
 
 	})
 
@@ -1000,7 +1000,46 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 		// Verify the Location header contains the revive URL
 		location := ctx.Response.Headers.Get("Location")
 		assert.NotEmpty(t, location, "Location header should be set for revive redirect")
-		assert.Equal(t, "https://console.dev.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://original-ecommerce.com/api/users", location)
+		assert.Equal(t, "https://console.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://original-ecommerce.com/api/users", location)
+	})
+
+	t.Run("should redirect to console url from env variable", func(t *testing.T) {
+		os.Setenv(constants.EnvConsoleURL, "https://console.dev.ownstak.com")
+		defer os.Unsetenv(constants.EnvConsoleURL)
+
+		httpmock.RegisterResponder("POST", `=~^http://localhost:4566/2015-03-31/functions/.*?/invocations$`,
+			func(req *http.Request) (*http.Response, error) {
+				// Simulate AWS Lambda ResourceNotFoundException (404)
+				awsError := map[string]interface{}{
+					"__type":  "ResourceNotFoundException",
+					"message": "The resource you requested does not exist.",
+				}
+				errorBytes, _ := json.Marshal(awsError)
+				resp := httpmock.NewBytesResponse(404, errorBytes)
+				resp.Header.Set("Content-Type", "application/x-amz-json-1.1")
+				return resp, nil
+			},
+		)
+
+		req := httptest.NewRequest("GET", "/api/users", nil)
+		req.Host = "ecommerce.com"
+		req.Header.Set(server.HeaderXOwnHost, "ecommerce-default-123.aws-primary.org.ownstak.link")
+		res := httptest.NewRecorder()
+
+		serverReq, err := server.NewRequest(req)
+		require.NoError(t, err)
+		serverRes := server.NewResponse(res)
+		ctx := server.NewRequestContext(serverReq, serverRes, nil)
+
+		middleware.OnRequest(ctx, func() {})
+
+		// Verify it's a temporary redirect to revive
+		assert.Equal(t, server.StatusTemporaryRedirect, ctx.Response.Status)
+
+		// Verify the Location header contains the revive URL
+		location := ctx.Response.Headers.Get("Location")
+		assert.NotEmpty(t, location, "Location header should be set for revive redirect")
+		assert.Equal(t, "https://console.dev.ownstak.com/revive?host=ecommerce-default-123.aws-primary.org.ownstak.link&originalUrl=http://ecommerce.com/api/users", location)
 	})
 
 	t.Run("should redirect to revive with query parameters preserved", func(t *testing.T) {
@@ -1083,6 +1122,32 @@ func TestAWSLambdaMiddleware(t *testing.T) {
 func setupAWSLambdaMock(t *testing.T) func() {
 	// Activate httpmock
 	httpmock.Activate(t)
+
+	// Mock EC2 metadata service for IAM credentials
+	httpmock.RegisterResponder("GET", "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+		func(req *http.Request) (*http.Response, error) {
+			// Return the IAM role name
+			return httpmock.NewStringResponse(200, "test-role"), nil
+		},
+	)
+
+	// Mock EC2 metadata service for specific IAM role credentials
+	httpmock.RegisterResponder("GET", "http://169.254.169.254/latest/meta-data/iam/security-credentials/test-role",
+		func(req *http.Request) (*http.Response, error) {
+			// Return mock IAM credentials
+			credentials := map[string]interface{}{
+				"Code":            "Success",
+				"LastUpdated":     "2024-01-01T00:00:00Z",
+				"Type":            "AWS-HMAC",
+				"AccessKeyId":     "ASIAMOCKACCESKEYID",
+				"SecretAccessKey": "mocksecretaccesskey",
+				"Token":           "mocktoken",
+				"Expiration":      "2024-12-31T23:59:59Z",
+			}
+			resp, err := httpmock.NewJsonResponse(200, credentials)
+			return resp, err
+		},
+	)
 
 	// Mock STS GetCallerIdentity
 	httpmock.RegisterResponder("POST", "http://localhost:4566/",

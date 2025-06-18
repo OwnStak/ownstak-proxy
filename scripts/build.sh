@@ -43,7 +43,7 @@ for PLATFORM in $(echo $PLATFORMS | tr ',' '\n'); do
     fi
 
     OUTPUT_FILE="$DIST_DIR/$DIST_NAME-$GOOS-$GOARCH$EXT"
-    CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "-X '$DIST_NAME/src/constants.AppName=$APP_NAME' -X '$DIST_NAME/src/constants.Version=$VERSION' -X '$DIST_NAME/src/constants.ConsoleURL=$CONSOLE_URL' -X '$DIST_NAME/src/constants.Mode=production'" -o $OUTPUT_FILE ./src/
+    CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -buildvcs=false -ldflags "-X '$DIST_NAME/src/constants.AppName=$APP_NAME' -X '$DIST_NAME/src/constants.Version=$VERSION' -X '$DIST_NAME/src/constants.ConsoleURL=$CONSOLE_URL' -X '$DIST_NAME/src/constants.Mode=production'" -o $OUTPUT_FILE ./src/
 done
 
 echo "✅ Build complete!"

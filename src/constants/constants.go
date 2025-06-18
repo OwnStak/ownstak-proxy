@@ -4,11 +4,9 @@ var (
 	// These are default placeholder values for the app name and version in the dev mode.
 	// During the build process, these values are overridden with the actual version and app name.
 	// See: scripts/build.sh
-	AppName    = "OwnStak Proxy DEV"
-	Version    = "0.0.0"
-	ConsoleURL = "https://console.dev.ownstak.com"
-	SupportURL = "https://ownstak.com/support"
-	Mode       = "development" // "development" or "production" (boolean would be better, but linker doesn't seem to support it with -X flag)
+	AppName = "OwnStak Proxy DEV"
+	Version = "0.0.0"
+	Mode    = "development" // "development" or "production" (boolean would be better, but linker doesn't seem to support it with -X flag)
 	// The prefix all our internal endpoints.
 	// E.g. /__ownstak__/health
 	InternalPathPrefix = "/__ownstak__"
@@ -17,6 +15,8 @@ var (
 // The names of the accepted ENV variables
 const (
 	// General
+	EnvConsoleURL           = "CONSOLE_URL"            // e.g. https://console.ownstak.com
+	EnvSupportURL           = "SUPPORT_URL"            // e.g. https://ownstak.com/support
 	EnvProvider             = "PROVIDER"               // aws
 	EnvLogLevel             = "LOG_LEVEL"              // debug, info, warn, error
 	EnvHost                 = "HOST"                   // e.g. 0.0.0.0
