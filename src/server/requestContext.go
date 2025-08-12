@@ -234,7 +234,7 @@ func ToHtmlErrorBody(errorMessage string, errorCode int, requestId string) strin
 			</head>
 			<body>
 				<div class="container">
-					<h1>%d</h1><h2>Oops! This site is experiencing problems serving your request. If you are the site administrator, please see the error details below or contact <a href="%s">OwnStak support</a> for assistance.</h2><div class="error-table"><div class="error-table-header"><i>Error:</i> %s</div><div class="error-table-body"><code>%s</code></div><div class="error-table-footer">Request ID: %s<br>Version: %s %s</div></div>
+					<h1>%d</h1><h2>Oops! This site is experiencing problems serving your request. If you are the site administrator, please see the error details below or contact <a href="%s">OwnStak support</a> for assistance.</h2><div class="error-table"><div class="error-table-header"><i>Error:</i> %s</div><div class="error-table-body"><code>%s</code></div><div class="error-table-footer">Request ID: %s<br>Component: %s %s</div></div>
 				</div>
 			</body>
 		</html>

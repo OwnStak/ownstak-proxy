@@ -25,10 +25,11 @@ const (
 	EnvHttpsCert            = "HTTPS_CERT"             // e.g. /etc/certs/ownstak.com/wildcard-ownstak-link.pem
 	EnvHttpsCertKey         = "HTTPS_CERT_KEY"         // e.g. /etc/certs/ownstak.com/wildcard-ownstak-link.key
 	EnvHttpsCertCa          = "HTTPS_CERT_CA"          // e.g. /etc/certs/ownstak.com/wildcard-ownstak-link.ca
-	EnvReadTimeout          = "READ_TIMEOUT"           // max waiting time for client to send the request
-	EnvWriteTimeout         = "WRITE_TIMEOUT"          // max waiting time for client to receive the response
-	EnvIdleTimeout          = "IDLE_TIMEOUT"           // max waiting time for client to send anything
-	EnvMaxHeaderBytes       = "MAX_HEADER_BYTES"       // the max total size of accepted request headers in bytes
+	EnvResWriteTimeout      = "RES_WRITE_TIMEOUT"      // max waiting time for client to receive the response
+	EnvReqReadTimeout       = "REQ_READ_TIMEOUT"       // max waiting time for client to send the request
+	EnvReqIdleTimeout       = "REQ_IDLE_TIMEOUT"       // max waiting time for client to send anything
+	EnvReqMaxHeadersSize    = "REQ_MAX_HEADERS_SIZE"   // the max total size of accepted request headers in bytes
+	EnvReqMaxBodySize       = "REQ_MAX_BODY_SIZE"      // the max size of the request body in bytes
 	EnvCacheMaxSize         = "CACHE_MAX_SIZE"         // e.g. 100 for 100MiB
 	EnvLambdaFunctionPrefix = "LAMBDA_FUNCTION_PREFIX" // unique prefix for each cloud backend. e.g. "ownstak-1skda"
 

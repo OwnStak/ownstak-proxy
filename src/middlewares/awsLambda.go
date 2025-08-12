@@ -259,6 +259,11 @@ func (m *AWSLambdaMiddleware) OnRequest(ctx *server.RequestContext, next func())
 	}
 	// Invoke Lambda function
 	invocationStartTime := time.Now()
+
+	// NOTE: AWS Lambda invocation operation is quite memory intensive.
+	// The issue is that the whole invocation is sync blocking operation,
+	// so we need to hold the whole req payload including up to 6MB body
+	// in memory until we receive the response from Lambda even though it's needed only for the actual invocation.
 	response, err := m.invokeLambda(context.Background(), lambdaArn, event, asyncMode)
 	invocationDuration := time.Since(invocationStartTime)
 

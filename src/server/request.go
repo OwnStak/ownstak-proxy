@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
 	"strings"
 )
 
@@ -31,16 +32,27 @@ type Request struct {
 }
 
 // NewRequest creates a new Request from an http.Request
-func NewRequest(httpReq *http.Request) (*Request, error) {
-	var body []byte
-	var err error
+// if provided or default empty request if not provided
+func NewRequest(httpReqs ...*http.Request) (*Request, error) {
+	// Return default empty request if no httpReqs provided
+	if len(httpReqs) == 0 {
+		return &Request{
+			Headers:         make(http.Header),
+			Body:            nil,
+			Query:           url.Values{},
+		}, nil
+	}
+	httpReq := httpReqs[0]
 
-	if httpReq.Body != nil {
-		body, err = io.ReadAll(httpReq.Body)
-		if err != nil {
-			return nil, err
-		}
-		defer httpReq.Body.Close()
+	// Handle nil request
+	if httpReq == nil {
+		return nil, nil
+	}
+
+	// Check if the request context is cancelled (client disconnected)
+	if httpReq.Context().Err() != nil {
+		logger.Debug("Request context cancelled, client disconnected: %v", httpReq.Context().Err())
+		return nil, nil
 	}
 
 	// Get the host header from X-Own-Host first, then try Host header
@@ -184,6 +196,32 @@ func NewRequest(httpReq *http.Request) (*Request, error) {
 	if httpReq.URL.RawQuery != "" {
 		// Only add query string if it exists
 		originalURL += "?" + httpReq.URL.RawQuery
+	}
+
+	// Read the body of the request
+	var body []byte
+	if httpReq.Body != nil {
+		var err error
+		body, err = io.ReadAll(httpReq.Body)
+		defer httpReq.Body.Close()
+		
+		if err != nil {
+			if err == io.EOF {
+				// io.EOF signals a graceful end of input, just ignore it and keep the body empty
+				body = []byte{}
+			} else if err == io.ErrUnexpectedEOF {
+				// io.ErrUnexpectedEOF signals that the client is gone while reading the body,
+				// so we return nil for both req and err and server will stop handling the request
+				return nil, nil
+			} else if strings.Contains(err.Error(), "connection reset") {
+				// Client disconnected, return nil for both req and err
+				logger.Debug("Client disconnected during request body read: %v", err)
+				return nil, nil
+			} else {
+				// Real error, return it
+				return nil, err
+			}
+		}
 	}
 
 	return &Request{

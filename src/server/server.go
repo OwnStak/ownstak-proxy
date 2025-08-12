@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,10 +35,12 @@ type Server struct {
 	certFile         string
 	keyFile          string
 	caFile           string
-	readTimeout      time.Duration
-	writeTimeout     time.Duration
-	idleTimeout      time.Duration
-	maxHeaderBytes   int
+	reqReadTimeout   time.Duration
+	reqWriteTimeout  time.Duration
+	reqIdleTimeout   time.Duration
+	reqMaxHeadersSize int
+	reqMaxBodySize    int
+	resWriteTimeout   time.Duration
 	MiddlewaresChain *MiddlewaresChain
 	startTime        time.Time
 	serverId         string
@@ -56,47 +59,60 @@ func NewServer() *Server {
 	caFile := utils.GetEnv(constants.EnvHttpsCertCa)
 
 	// Set the maximum time the server will wait for a request from the client
-	readTimeoutStr := utils.GetEnv(constants.EnvReadTimeout)
-	readTimeout := 2 * time.Minute // Defaults to 2 minutes
-	if readTimeoutStr != "" {
-		if rt, err := time.ParseDuration(readTimeoutStr); err == nil {
-			readTimeout = rt
+	reqReadTimeoutStr := utils.GetEnv(constants.EnvReqReadTimeout)
+	reqReadTimeout := 2 * time.Minute // Defaults to 2 minutes
+	if reqReadTimeoutStr != "" {
+		if rt, err := time.ParseDuration(reqReadTimeoutStr); err == nil {
+			reqReadTimeout = rt
 		} else {
-			logger.Warn(fmt.Sprintf("Invalid READ_TIMEOUT format, using default: %d", readTimeout))
+			logger.Warn(fmt.Sprintf("Invalid REQ_READ_TIMEOUT format, using default: %d", reqReadTimeout))
 		}
 	}
 
 	// Set the maximum time the server will wait for the client to receive the response
-	writeTimeoutStr := utils.GetEnv(constants.EnvWriteTimeout)
-	writeTimeout := 2 * time.Hour // Defaults to 2 hours
-	if writeTimeoutStr != "" {
-		if wt, err := time.ParseDuration(writeTimeoutStr); err == nil {
-			writeTimeout = wt
+	resWriteTimeoutStr := utils.GetEnv(constants.EnvResWriteTimeout)
+	resWriteTimeout := 2 * time.Hour // Defaults to 2 hours
+	if resWriteTimeoutStr != "" {
+		if wt, err := time.ParseDuration(resWriteTimeoutStr); err == nil {
+			resWriteTimeout = wt
 		} else {
-			logger.Warn(fmt.Sprintf("Invalid WRITE_TIMEOUT format, using default: %d", writeTimeout))
+			logger.Warn(fmt.Sprintf("Invalid RES_WRITE_TIMEOUT format, using default: %d", resWriteTimeout))
 		}
 	}
 
 	// Set the maximum time the server will wait for a client to send next requests
 	// when using keep-alive or initial connection
-	idleTimeoutStr := utils.GetEnv(constants.EnvIdleTimeout)
-	idleTimeout := 60 * time.Second // Defaults to 60 seconds
-	if idleTimeoutStr != "" {
-		if it, err := time.ParseDuration(idleTimeoutStr); err == nil {
-			idleTimeout = it
+	reqIdleTimeoutStr := utils.GetEnv(constants.EnvReqIdleTimeout)
+	reqIdleTimeout := 60 * time.Second // Defaults to 60 seconds
+	if reqIdleTimeoutStr != "" {
+		if it, err := time.ParseDuration(reqIdleTimeoutStr); err == nil {
+			reqIdleTimeout = it
 		} else {
-			logger.Warn(fmt.Sprintf("Invalid IDLE_TIMEOUT format, using default: %d", idleTimeout))
+			logger.Warn(fmt.Sprintf("Invalid REQ_IDLE_TIMEOUT format, using default: %d", reqIdleTimeout))
 		}
 	}
 
 	// Set the maximum total size of accepted request headers in bytes
-	maxHeaderBytesStr := utils.GetEnv(constants.EnvMaxHeaderBytes)
-	maxHeaderBytes := 1024 * 1024 // Defaults to 1MiB
-	if maxHeaderBytesStr != "" {
-		if size, err := strconv.Atoi(maxHeaderBytesStr); err == nil {
-			maxHeaderBytes = size
+	reqMaxHeadersSizeStr := utils.GetEnv(constants.EnvReqMaxHeadersSize)
+	reqMaxHeadersSize := 64 * 1024 // Defaults to 64KiB
+	if reqMaxHeadersSizeStr != "" {
+		if size, err := strconv.Atoi(reqMaxHeadersSizeStr); err == nil {
+			reqMaxHeadersSize = size
 		} else {
-			logger.Warn(fmt.Sprintf("Invalid MAX_HEADER_BYTES format, using default: %d", maxHeaderBytes))
+			logger.Warn(fmt.Sprintf("Invalid REQ_MAX_HEADERS_SIZE format, using default: %d", reqMaxHeadersSize))
+		}
+	}
+
+	// Set the maximum size of the request body in bytes
+	// NOTE: The req body is always buffered whole in memory before invoking the lambda, 
+	// so we need to have a reasonable limit.
+	reqMaxBodySizeStr := utils.GetEnv(constants.EnvReqMaxBodySize)
+	reqMaxBodySize := 10 * 1024 * 1024 // Defaults to 10MiB
+	if reqMaxBodySizeStr != "" {
+		if size, err := strconv.Atoi(reqMaxBodySizeStr); err == nil {
+			reqMaxBodySize = size
+		} else {
+			logger.Warn(fmt.Sprintf("Invalid REQ_MAX_BODY_SIZE format, using default: %d", reqMaxBodySize))
 		}
 	}
 
@@ -131,13 +147,14 @@ func NewServer() *Server {
 		certFile:         certFile,
 		keyFile:          keyFile,
 		caFile:           caFile,
-		readTimeout:      readTimeout,
-		writeTimeout:     writeTimeout,
-		idleTimeout:      idleTimeout,
-		maxHeaderBytes:   maxHeaderBytes,
-		MiddlewaresChain: NewMiddlewaresChain(),
+		reqReadTimeout:   reqReadTimeout,
+		resWriteTimeout:  resWriteTimeout,
+		reqIdleTimeout:   reqIdleTimeout,
+		reqMaxHeadersSize: reqMaxHeadersSize,
+		reqMaxBodySize:    reqMaxBodySize,
 		startTime:        time.Now(),
 		serverId:         serverId,
+		MiddlewaresChain: NewMiddlewaresChain(),
 	}
 }
 
@@ -174,10 +191,10 @@ func (server *Server) Start() {
 	httpServer := &http.Server{
 		Addr:           fmt.Sprintf("%s:%s", server.host, server.httpPort),
 		Handler:        http.HandlerFunc(server.handleRequest),
-		ReadTimeout:    server.readTimeout,
-		WriteTimeout:   server.writeTimeout,
-		IdleTimeout:    server.idleTimeout,
-		MaxHeaderBytes: server.maxHeaderBytes,
+		ReadTimeout:    server.reqReadTimeout,
+		IdleTimeout:    server.reqIdleTimeout,
+		MaxHeaderBytes: server.reqMaxHeadersSize,
+		WriteTimeout:   server.resWriteTimeout,
 	}
 
 	// Create HTTPS server with HTTP/2 support
@@ -191,17 +208,17 @@ func (server *Server) Start() {
 			NextProtos: []string{"h2", "http/1.1"}, // Enable HTTP/2 protocol negotiation
 		},
 		Handler:        http.HandlerFunc(server.handleRequest),
-		ReadTimeout:    server.readTimeout,
-		WriteTimeout:   server.writeTimeout,
-		IdleTimeout:    server.idleTimeout,
-		MaxHeaderBytes: server.maxHeaderBytes,
+		ReadTimeout:    server.reqReadTimeout,
+		WriteTimeout:   server.resWriteTimeout,
+		IdleTimeout:    server.reqIdleTimeout,
+		MaxHeaderBytes: server.reqMaxHeadersSize,
 	}
 
 	// Configure HTTP/2
 	http2.ConfigureServer(httpsServer, &http2.Server{
 		// HTTP/2 specific settings can go here
 		MaxConcurrentStreams: 250, // max streams per client connection
-		IdleTimeout:          server.idleTimeout,
+		IdleTimeout:          server.reqIdleTimeout,
 	})
 
 	// Start HTTP server in a goroutine
@@ -244,35 +261,62 @@ func (server *Server) Start() {
 }
 
 func (server *Server) handleRequest(httpRes http.ResponseWriter, httpReq *http.Request) {
-	// Create a new Request
-	req, err := NewRequest(httpReq)
-	if err != nil {
-		logger.Error("Failed to create server request: %v", err)
-		http.Error(httpRes, "Internal Server Error", http.StatusInternalServerError)
+	if httpReq == nil {
+		logger.Debug("httpReq is nil, nothing to do")
 		return
 	}
 
-	// Log incoming requests in debug mode
-	logger.Debug("%s %s", req.Method, req.URL)
+	// Set limit to the request body size
+	httpReq.Body = http.MaxBytesReader(httpRes, httpReq.Body, int64(server.reqMaxBodySize))
+
+	// Create a new Request object from the http.Request
+	req, reqErr := NewRequest(httpReq)
+
+	// No req and no error, meaning the client is gone/disconnected gracefully,
+	// before we could start handling the request. Just return.
+	if req == nil && reqErr == nil {
+		logger.Debug("Request is nil because the client is gone")
+		return
+	}
+
+	// If req creation failed, assign new empty request with defaults for the context,
+	// so we can render the "nice-looking" error page.
+	if req == nil {
+		req, _ = NewRequest()
+	}
 	// Create a new Response with the http.ResponseWriter
 	res := NewResponse(httpRes)
 	// Create a context containing request, response
 	ctx := NewRequestContext(req, res, server)
+	// Log incoming requests in debug mode
+	logger.Debug("%s %s", req.Method, req.URL)
+
+	// Always end and send the response when we're done
+	defer res.End()
+
+	// Handle known req creation errors
+	if reqErr != nil && strings.Contains(reqErr.Error(), "http: request body too large") {
+		ctx.Error(fmt.Sprintf("Request body too large. Maximum accepted size is %d bytes.", server.reqMaxBodySize), StatusRequestEntityTooLarge)
+		return
+	}
+
+	// Handle all other req creation errors and log them
+	if reqErr != nil {
+		logger.Error("Failed to create server request: %v", reqErr)
+		ctx.Error(fmt.Sprintf("Failed to create server request: %v", reqErr), StatusInternalServerError)
+		return
+	}
 
 	// If there's no provider set, return an error
 	provider := utils.GetEnv(constants.EnvProvider)
 	if provider == "" {
 		// If no provider is set, return an error
 		ctx.Error(fmt.Sprintf("Unknown provider: The %s environment variable is not set. ", constants.EnvProvider), StatusServiceUnavailable)
-		res.End()
 		return
 	}
 
 	// Execute middleware chain
 	server.MiddlewaresChain.Execute(ctx)
-
-	// Send response to client
-	res.End()
 }
 
 func (server *Server) generateSelfSignedCert() {

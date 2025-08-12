@@ -25,6 +25,22 @@ func TestRequestContext(t *testing.T) {
 			assert.Equal(t, "", ctx.ErrorMesage)
 			assert.Equal(t, 0, ctx.ErrorStatus)
 		})
+
+		t.Run("should create context with request and response", func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://example.com/path", nil)
+			assert.NoError(t, err)
+
+			serverReq, err := NewRequest(req)
+			assert.NoError(t, err)
+			serverRes := NewResponse()
+
+			ctx := NewRequestContext(serverReq, serverRes, nil)
+			assert.NotNil(t, ctx)
+			assert.Equal(t, serverReq, ctx.Request)
+			assert.Equal(t, serverRes, ctx.Response)
+			assert.Equal(t, "", ctx.ErrorMesage)
+			assert.Equal(t, 0, ctx.ErrorStatus)
+		})
 	})
 
 	t.Run("Error", func(t *testing.T) {

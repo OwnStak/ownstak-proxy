@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
 )
 
 type Response struct {
-	Status           int
+	Status       int
 	Headers          http.Header
 	Body             []byte
 	Ended            bool
@@ -24,7 +25,7 @@ func NewResponse(responseWriter ...http.ResponseWriter) *Response {
 	headers := make(http.Header)
 
 	res := &Response{
-		Status:           http.StatusOK,
+		Status:       http.StatusOK,
 		Headers:          headers,
 		Body:             []byte{},
 		Ended:            false,
@@ -49,13 +50,13 @@ func (res *Response) SetResponseWriter(rw http.ResponseWriter) {
 }
 
 // EnableStreaming enables streaming mode for this response
-func (res *Response) EnableStreaming() {
-	res.Streaming = true
-}
-
-// DisableStreaming disables streaming mode for this response
-func (res *Response) DisableStreaming() {
-	res.Streaming = false
+// @param value - Optional boolean value to set the streaming mode to. Default: true
+func (res *Response) EnableStreaming(value ...bool) {
+	if len(value) > 0 {
+		res.Streaming = value[0]
+	} else {
+		res.Streaming = true
+	}
 }
 
 // Writes body chunks to the response writer
@@ -110,8 +111,21 @@ func (res *Response) Clear() {
 	res.ClearBody()
 }
 
-func (res *Response) ClearHeaders() {
+func (res *Response) ClearHeaders(preserveInternalHeaders ...bool) {
+	internalHeaders := make(http.Header)
+	for k, v := range res.Headers {
+		if strings.HasPrefix(strings.ToLower(k), strings.ToLower(HeaderXOwnPrefix)) {
+			internalHeaders[k] = v
+		}
+	}
+
 	res.Headers = make(http.Header)
+	// Preserve our internal headers if preserveInternalHeaders is true
+	if len(preserveInternalHeaders) > 0 && preserveInternalHeaders[0] {
+		res.Headers = internalHeaders
+	}
+
+	// Always set default content type and proxy version headers
 	res.Headers.Set(HeaderContentType, ContentTypePlain)
 	res.Headers.Set(HeaderXOwnProxyVersion, constants.Version)
 }

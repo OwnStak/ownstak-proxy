@@ -12,7 +12,7 @@ import (
 )
 
 func TestNewResponse(t *testing.T) {
-	t.Run("should create response with default values", func(t *testing.T) {
+	t.Run("should create default empty response", func(t *testing.T) {
 		resp := NewResponse()
 
 		assert.Equal(t, http.StatusOK, resp.Status)
@@ -48,16 +48,22 @@ func TestResponseMethods(t *testing.T) {
 		assert.Equal(t, rw, resp.ResponseWriter)
 	})
 
-	t.Run("EnableStreaming should enable streaming mode", func(t *testing.T) {
+	t.Run("streaming mode should be disabled by default", func(t *testing.T) {
+		resp := NewResponse()
+		assert.False(t, resp.Streaming)
+	})
+
+	t.Run("EnableStreaming(true) should enable streaming mode by default", func(t *testing.T) {
 		resp := NewResponse()
 		resp.EnableStreaming()
 		assert.True(t, resp.Streaming)
+		resp.EnableStreaming(true)
+		assert.True(t, resp.Streaming)
 	})
 
-	t.Run("DisableStreaming should disable streaming mode", func(t *testing.T) {
+	t.Run("EnableStreaming(false) should disable streaming mode", func(t *testing.T) {
 		resp := NewResponse()
-		resp.EnableStreaming()
-		resp.DisableStreaming()
+		resp.EnableStreaming(false)
 		assert.False(t, resp.Streaming)
 	})
 

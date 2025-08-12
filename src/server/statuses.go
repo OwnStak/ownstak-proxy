@@ -4,6 +4,7 @@ package server
 const (
 	StatusOK                  = 200
 	StatusBadRequest          = 400
+	StatusRequestEntityTooLarge = 413
 	StatusInternalServerError = 500
 	StatusServiceUnavailable  = 503
 	StatusPermanentRedirect   = 301

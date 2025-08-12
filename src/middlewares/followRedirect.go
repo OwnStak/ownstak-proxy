@@ -46,10 +46,18 @@ func (m *FollowRedirectMiddleware) OnRequest(ctx *server.RequestContext, next fu
 
 func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	redirectURL := ctx.Response.Headers.Get(server.HeaderLocation)
-	followRedirect := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)
+	followRedirectHeader := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)		
+	followRedirect := followRedirectHeader == "true" || followRedirectHeader == "1"
 
-	// If response is not a redirect or X-Follow-Redirect header is false, continue to next middleware
-	if redirectURL == "" || (followRedirect != "true" && followRedirect != "1") {
+	mergeStatusHeader := ctx.Response.Headers.Get(server.HeaderXOwnMergeStatus)
+	mergeStatus := mergeStatusHeader == "true" || mergeStatusHeader == "1"
+
+	mergeHeadersHeader := ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders)
+	mergeHeaders := mergeHeadersHeader == "true" || mergeHeadersHeader == "1"
+
+	// If response is not a redirect or X-Follow-Redirect header is false, 
+	// continue to next middleware
+	if redirectURL == "" || !followRedirect {
 		next()
 		return
 	}
@@ -57,15 +65,7 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	logger.Debug("Following redirect to '%s'", redirectURL)
 	// e.g: 302 Location: https://site-bucket.s3.amazonaws.com/site-125/index.html
 
-	// Preserve our internal headers from existing response
-	// in the final response for debugging purposes
-	internalHeaders := make(http.Header)
-	for k, v := range ctx.Response.Headers {
-		if strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
-			internalHeaders[k] = v
-		}
-	}
-
+	// Clear body, it's not needed anymore
 	ctx.Response.ClearBody()
 
 	// Remove headers that can cause issues after merging
@@ -76,20 +76,10 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	ctx.Response.Headers.Del(server.HeaderTransferEncoding)
 	ctx.Response.Headers.Del(server.HeaderContentDisposition)
 
-	// If X-Own-Merge-Headers is not true, clear all headers from the lambda
-	// response and keep only our internal headers
-	if ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders) != "true" {
-		ctx.Response.ClearHeaders()
-		ctx.Response.Headers = internalHeaders
-		ctx.Debug("merge-headers=false")
-	} else {
-		ctx.Debug("merge-headers=true")
-	}
-
-	// Remove X-Own-Merge-Headers header, it's not needed anymore
+	// Remove internal headers that are not needed anymore
 	ctx.Response.Headers.Del(server.HeaderXOwnMergeHeaders)
-	// Clear X-Own-Follow-Redirect header, it's not needed anymore
 	ctx.Response.Headers.Del(server.HeaderXOwnFollowRedirect)
+	ctx.Response.Headers.Del(server.HeaderXOwnMergeStatus)
 
 	// Store debug information about the redirect
 	ctx.Debug("follow-redirect-status=" + fmt.Sprintf("%d", ctx.Response.Status))
@@ -101,15 +91,15 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	// Enable streaming for the response
 	ctx.Response.EnableStreaming()
 
-	// Start a GET request with streaming
-	req, err := http.NewRequest("GET", redirectURL, nil)
+	// Start new request to the redirect URL
+	req, err := http.NewRequest(ctx.Request.Method, redirectURL, nil)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Failed to create request for redirect to '%s': %v", redirectURL, err)
 		ctx.Error(errorMessage, http.StatusInternalServerError)
 		return
 	}
 
-	// Copy headers from the original request
+	// Copy request headers from the original request
 	for k, v := range ctx.Request.Headers {
 		if k != server.HeaderHost && !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
 			req.Header.Set(k, v[0])
@@ -125,20 +115,30 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	}
 	defer resp.Body.Close()
 
-	// Set the response status and merge headers
-	ctx.Response.Status = resp.StatusCode
+	// Preserve status code from lambda response only if X-Own-Merge-Status is true and the S3 status code is 200 (e.g. succesfully returned file).
+	// Otherwise, override status code with the status code from the redirect response.
+	// We still need to correctly return 206 Partial Content, 304 Not Modified response statuses etc...
+	// to not break the cache or streaming behavior.
+	if mergeStatus && resp.StatusCode == 200 {
+		ctx.Debug("merge-status=true")
+	} else {
+		ctx.Debug("merge-status=false")
+		ctx.Response.Status = resp.StatusCode
+	}
+
+	// Preserve headers from lambda response only if X-Own-Merge-Headers is true.
+	// Otherwise, clear all headers and keep only our internal headers and headers from S3.
+	if mergeHeaders {
+		ctx.Debug("merge-headers=true")
+	} else {
+		ctx.Debug("merge-headers=false")
+		ctx.Response.ClearHeaders(true)
+	}
 	for k, v := range resp.Header {
+		// Don't override x-own-* headers when following redirect to another ownstak site
 		if !strings.HasPrefix(strings.ToLower(k), strings.ToLower(server.HeaderXOwnPrefix)) {
 			ctx.Response.Headers.Set(k, v[0])
 		}
-	}
-
-	// Copy content information headers
-	if contentLength := resp.Header.Get(server.HeaderContentLength); contentLength != "" {
-		ctx.Response.Headers.Set(server.HeaderContentLength, contentLength)
-	}
-	if contentType := resp.Header.Get(server.HeaderContentType); contentType != "" {
-		ctx.Response.Headers.Set(server.HeaderContentType, contentType)
 	}
 
 	// The files on S3 can be very large, that's why we need to stream the response
@@ -164,7 +164,7 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 		}
 	}
 
-	// No other middlewares can be executed, response is already streamed
+	// No other middlewares can be executed, response was already streamed
 }
 
 // NormalizeRedirectURL converts a potentially relative URL to an absolute URL

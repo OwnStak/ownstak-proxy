@@ -32,16 +32,16 @@ func TestImageOptimizerMiddleware(t *testing.T) {
 			// Create test request
 			req := httptest.NewRequest("GET", "/__ownstak__/image", nil)
 			res := httptest.NewRecorder()
-
+			
 			// Create request context
 			serverReq, err := server.NewRequest(req)
 			require.NoError(t, err)
 			serverRes := server.NewResponse(res)
 			ctx := server.NewRequestContext(serverReq, serverRes, nil)
-
+			
 			// Create and run middleware
 			middleware.OnRequest(ctx, func() {})
-
+			
 			// Verify response
 			assert.Equal(t, http.StatusBadRequest, ctx.Response.Status)
 			assert.Contains(t, string(ctx.Response.Body), "URL parameter is required")
@@ -414,20 +414,20 @@ func TestImageOptimizerMiddleware(t *testing.T) {
 			// Create test request
 			req := httptest.NewRequest("GET", "/__ownstak__/image?url=http://localhost:8080/image.webp", nil)
 			res := httptest.NewRecorder()
-
+			
 			// Create request context
 			serverReq, err := server.NewRequest(req)
 			require.NoError(t, err)
 			serverRes := server.NewResponse(res)
 			ctx := server.NewRequestContext(serverReq, serverRes, nil)
-
+			
 			// Create and run middleware
 			middleware.OnRequest(ctx, func() {})
 
 			// Body to string
 			body := string(ctx.Response.Body)
 			assert.Equal(t, "", body)
-
+			
 			// Verify response
 			assert.Equal(t, http.StatusOK, ctx.Response.Status)
 			assert.Equal(t, "image/webp", ctx.Response.Headers.Get("Content-Type"))
@@ -604,7 +604,7 @@ func setupImageOptimizerMockClient(t *testing.T) func() {
 
 	img, err := os.Open("src/vips/vips_test.webp")
 	require.NoError(t, err)
-
+	
 	// Read the image into a byte slice
 	imgBytes, err := io.ReadAll(img)
 	require.NoError(t, err)
@@ -621,8 +621,8 @@ func setupImageOptimizerMockClient(t *testing.T) func() {
 			for i := range imgBytes {
 				imgBytes[i] = byte(i % 256)
 			}
-			resp := httpmock.NewBytesResponse(200, imgBytes)
-			resp.Header.Set("Content-Type", "image/webp") // Set correct MIME type
+		resp := httpmock.NewBytesResponse(200, imgBytes)
+		resp.Header.Set("Content-Type", "image/webp") // Set correct MIME type
 			resp.Header.Set("Content-Length", strconv.Itoa(len(imgBytes)))
 			return resp, nil
 		}
