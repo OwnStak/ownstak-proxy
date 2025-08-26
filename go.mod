@@ -7,7 +7,7 @@ toolchain go1.24.2
 require (
 	github.com/aws/aws-sdk-go-v2 v1.38.1
 	github.com/aws/aws-sdk-go-v2/config v1.31.2
-	github.com/aws/aws-sdk-go-v2/service/lambda v1.76.2
+	github.com/aws/aws-sdk-go-v2/service/lambda v1.77.0
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.0
 	github.com/ebitengine/purego v0.8.4
