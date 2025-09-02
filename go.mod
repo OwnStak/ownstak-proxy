@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.38.3
 	github.com/aws/aws-sdk-go-v2/config v1.31.6
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.77.2
-	github.com/aws/aws-sdk-go-v2/service/organizations v1.44.1
+	github.com/aws/aws-sdk-go-v2/service/organizations v1.44.2
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.2
 	github.com/ebitengine/purego v0.8.4
 	github.com/google/uuid v1.6.0
