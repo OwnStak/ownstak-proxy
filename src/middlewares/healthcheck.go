@@ -6,7 +6,9 @@ import (
 )
 
 // HealthcheckMiddleware provides a healthcheck endpoint that just returns 200 OK
-type HealthcheckMiddleware struct{}
+type HealthcheckMiddleware struct {
+	server.DefaultMiddleware
+}
 
 func NewHealthcheckMiddleware() *HealthcheckMiddleware {
 	return &HealthcheckMiddleware{}
@@ -19,9 +21,5 @@ func (m *HealthcheckMiddleware) OnRequest(ctx *server.RequestContext, next func(
 		ctx.Response.Headers.Set(server.HeaderContentType, "text/plain")
 		return
 	}
-	next()
-}
-
-func (m *HealthcheckMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	next()
 }

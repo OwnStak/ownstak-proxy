@@ -24,20 +24,21 @@ const (
 	HeaderLastModified       = "Last-Modified"
 	HeaderExpires            = "Expires"
 	HeaderServer             = "Server"
+	HeaderRetryAfter         = "Retry-After"
+	HeaderServerTiming       = "Server-Timing"
 
 	// Custom OwnStak Proxy headers
 	HeaderXOwnPrefix         = "X-Own-"                // Prefix for all the OwnStak headers. These headers have special treatment. For example: they're always preserved in res when following a redirect
 	HeaderXOwnProxy          = "X-Own-Proxy"           // Present in req when is proxied
 	HeaderXOwnProxyVersion   = "X-Own-Proxy-Version"   // Present in req/res headers when the request is proxied
 	HeaderXOwnHost           = "X-Own-Host"            // Works as replacement for Host header and preffered way of specifying the host for the proxy in the req
-	HeaderXOwnLambdaMode     = "X-Own-Lambda-Mode"     // When detected in the req, the proxy will use sync/async mode to invoke the Lambda function
+	HeaderXOwnStreaming      = "X-Own-Streaming"       // "true" or "false" - tells the ownstak-cli whatever it can return response in streaming format.
 	HeaderXOwnMergeHeaders   = "X-Own-Merge-Headers"   // When present in the req, the proxy will merge the headers from the original headers when following a redirect
-	HeaderXOwnMergeStatus 	 = "X-Own-Merge-Status" // When present in the req, the proxy will merge the status code from the original headers when following a redirect
+	HeaderXOwnMergeStatus    = "X-Own-Merge-Status"    // When present in the req, the proxy will merge the status code from the original headers when following a redirect
 	HeaderXOwnFollowRedirect = "X-Own-Follow-Redirect" // When detected in the res from lambda, the proxy will follow the redirect
 
-	HeaderXOwnImageOptimizer = "X-Own-Image-Optimizer" // Present in res when the request is handled by the image optimizer
-	HeaderXOwnDebug          = "X-Own-Debug"           // Requests debug headers for all the OwnStak components when present in the req (proxy, project etc...)
-	HeaderXOwnProxyDebug     = "X-Own-Proxy-Debug"     // Requests debug header just for the proxy when present in the req and as result, the proxy returns the same header in the res with the debug information
+	HeaderXOwnDebug      = "X-Own-Debug"       // Requests debug headers for all the OwnStak components when present in the req (proxy, project etc...)
+	HeaderXOwnProxyDebug = "X-Own-Proxy-Debug" // Requests debug header just for the proxy when present in the req and as result, the proxy returns the same header in the res with the debug information
 )
 
 // Content type constants

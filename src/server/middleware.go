@@ -2,6 +2,12 @@ package server
 
 // Middleware interface defines the contract for all middleware components
 type Middleware interface {
+	// OnStart is called when the server starts
+	OnStart(server *Server)
+
+	// OnStop is called when the server stops
+	OnStop(server *Server)
+
 	// OnRequest is called right after the request is received,
 	// and before onResponse is called.
 	OnRequest(ctx *RequestContext, next func())
@@ -10,6 +16,13 @@ type Middleware interface {
 	// and right before the response is sent to the client, so it can modify the response.
 	OnResponse(ctx *RequestContext, next func())
 }
+
+type DefaultMiddleware struct{}
+
+func (m *DefaultMiddleware) OnStart(server *Server)                      {}
+func (m *DefaultMiddleware) OnStop(server *Server)                       {}
+func (m *DefaultMiddleware) OnRequest(ctx *RequestContext, next func())  { next() }
+func (m *DefaultMiddleware) OnResponse(ctx *RequestContext, next func()) { next() }
 
 // MiddlewaresChain holds ordered lists of middleware for request and response phases
 type MiddlewaresChain struct {
@@ -28,51 +41,69 @@ func (mc *MiddlewaresChain) Add(mw Middleware) {
 	mc.middlewares = append(mc.middlewares, mw)
 }
 
-// Execute runs all middlewares in the order they were added
-func (mc *MiddlewaresChain) Execute(ctx *RequestContext) {
-	// Execute OnRequest middlewares
-	mc.executeChainOnRequest(ctx)
+// Count returns the number of middlewares in the chain
+func (mc *MiddlewaresChain) Count() int {
+	return len(mc.middlewares)
+}
 
-	// Execute OnResponse middlewares
-	mc.executeChainOnResponse(ctx)
+// GetMiddleware returns the middleware at the specified index
+func (mc *MiddlewaresChain) GetMiddleware(index int) Middleware {
+	if index < 0 || index >= len(mc.middlewares) {
+		return nil
+	}
+	return mc.middlewares[index]
+}
+
+// Execute runs all middlewares in the order they were added
+func (mc *MiddlewaresChain) ExecuteOnStart(server *Server) {
+	for index := 0; index < len(mc.middlewares); index++ {
+		currentMiddleware := mc.middlewares[index]
+		currentMiddleware.OnStart(server)
+	}
+}
+
+// ExecuteOnStop executes OnStop middlewares in the chain
+func (mc *MiddlewaresChain) ExecuteOnStop(server *Server) {
+	for index := 0; index < len(mc.middlewares); index++ {
+		currentMiddleware := mc.middlewares[index]
+		currentMiddleware.OnStop(server)
+	}
 }
 
 // executeChainOnRequest executes OnRequest middlewares in the chain
 // NOTE: This could be recursion, but debugging for with index is way easier
 // in profiler
-func (mc *MiddlewaresChain) executeChainOnRequest(ctx *RequestContext) {
-	for index := 0; index < len(mc.middlewares); index++ {
-		currentMiddleware := mc.middlewares[index]
+func (mc *MiddlewaresChain) ExecuteOnRequest(ctx *RequestContext) {
+	var executeMiddleware func(int)
 
-		// Execute OnRequest with next middleware
-		stop := true
-		currentMiddleware.OnRequest(ctx, func() {
-			// Continue to next middleware
-			stop = false
-		})
-
-		// If stop flag is set or there's an error, exit the loop
-		if stop || ctx.ErrorStatus != 0 {
-			break
+	executeMiddleware = func(index int) {
+		if index >= len(mc.middlewares) || ctx.ErrorStatus != 0 {
+			return
 		}
+
+		currentMiddleware := mc.middlewares[index]
+		currentMiddleware.OnRequest(ctx, func() {
+			executeMiddleware(index + 1)
+		})
 	}
+
+	executeMiddleware(0)
 }
 
 // executeChainOnResponse executes OnResponse middlewares in the chain
-func (mc *MiddlewaresChain) executeChainOnResponse(ctx *RequestContext) {
-	for index := 0; index < len(mc.middlewares); index++ {
-		currentMiddleware := mc.middlewares[index]
+func (mc *MiddlewaresChain) ExecuteOnResponse(ctx *RequestContext) {
+	var executeMiddleware func(int)
 
-		// Execute OnResponse with next middleware
-		stop := true
-		currentMiddleware.OnResponse(ctx, func() {
-			// Continue to next middleware
-			stop = false
-		})
-
-		// If stop flag is set, exit the loop
-		if stop {
-			break
+	executeMiddleware = func(index int) {
+		if index >= len(mc.middlewares) {
+			return
 		}
+
+		currentMiddleware := mc.middlewares[index]
+		currentMiddleware.OnResponse(ctx, func() {
+			executeMiddleware(index + 1)
+		})
 	}
+
+	executeMiddleware(0)
 }

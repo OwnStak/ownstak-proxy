@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"golang.org/x/term"
 )
 
 var (
@@ -29,6 +30,9 @@ var (
 	warnLogger  = log.New(currentStdout, "", 0)
 	errorLogger = log.New(currentStderr, "", 0)
 	fatalLogger = log.New(currentStderr, "", 0)
+
+	logLevel  = INFO
+	useColors = true
 )
 
 // ANSI color codes
@@ -48,9 +52,6 @@ const (
 	ERROR
 	FATAL
 )
-
-// Current log level
-var currentLogLevel = INFO
 
 // SetOutput sets the output writers for all loggers
 func SetOutput(stdout, stderr io.Writer) {
@@ -75,17 +76,17 @@ func ResetOutput() {
 func SetLogLevel(level string) {
 	switch strings.ToLower(level) {
 	case "debug":
-		currentLogLevel = DEBUG
+		logLevel = DEBUG
 	case "info":
-		currentLogLevel = INFO
+		logLevel = INFO
 	case "warn":
-		currentLogLevel = WARN
+		logLevel = WARN
 	case "error":
-		currentLogLevel = ERROR
+		logLevel = ERROR
 	case "fatal":
-		currentLogLevel = FATAL
+		logLevel = FATAL
 	default:
-		currentLogLevel = INFO
+		logLevel = INFO
 	}
 }
 
@@ -96,53 +97,65 @@ func init() {
 	// Get log level from environment variable
 	logLevel := utils.GetEnvWithDefault(constants.EnvLogLevel, "info")
 	SetLogLevel(logLevel)
+
+	// Check if stdout is a terminal
+	if file, ok := currentStdout.(*os.File); ok {
+		useColors = term.IsTerminal(int(file.Fd()))
+	} else {
+		// If it's not a file (e.g., custom writer), assume it's not a terminal
+		useColors = false
+	}
 }
 
 // Log formats and logs the message with the given level and color
 func Log(logger *log.Logger, level string, color string, format string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	message := fmt.Sprintf(format, args...)
-	logger.Printf("%s[%s] %s: %s%s\n", color, timestamp, level, message, colorReset)
+	if useColors {
+		logger.Printf("%s[%s] %s: %s%s\n", color, timestamp, level, message, colorReset)
+	} else {
+		logger.Printf("[%s] %s: %s\n", timestamp, level, message)
+	}
 }
 
 // Info logs informational messages
 func Info(format string, args ...interface{}) {
-	if currentLogLevel <= INFO {
+	if logLevel <= INFO {
 		Log(infoLogger, "INFO", colorWhite, format, args...)
 	}
 }
 
 // Trace logs trace messages
 func Trace(format string, args ...interface{}) {
-	if currentLogLevel <= DEBUG {
+	if logLevel <= DEBUG {
 		Log(traceLogger, "TRACE", colorGray, format, args...)
 	}
 }
 
 // Debug logs debug messages
 func Debug(format string, args ...interface{}) {
-	if currentLogLevel <= DEBUG {
+	if logLevel <= DEBUG {
 		Log(debugLogger, "DEBUG", colorGray, format, args...)
 	}
 }
 
 // Warn logs warning messages
 func Warn(format string, args ...interface{}) {
-	if currentLogLevel <= WARN {
+	if logLevel <= WARN {
 		Log(warnLogger, "WARN", colorYellow, format, args...)
 	}
 }
 
 // Error logs error messages
 func Error(format string, args ...interface{}) {
-	if currentLogLevel <= ERROR {
+	if logLevel <= ERROR {
 		Log(errorLogger, "ERROR", colorRed, format, args...)
 	}
 }
 
 // Fatal logs fatal error messages and exits the program
 func Fatal(format string, args ...interface{}) {
-	if currentLogLevel <= FATAL {
+	if logLevel <= FATAL {
 		Log(fatalLogger, "FATAL", colorRed, format, args...)
 		os.Exit(1)
 	}

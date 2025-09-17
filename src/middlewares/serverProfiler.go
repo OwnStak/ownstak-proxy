@@ -11,7 +11,9 @@ import (
 )
 
 // ServerProfilerMiddleware allows to profile the memory in development mode
-type ServerProfilerMiddleware struct{}
+type ServerProfilerMiddleware struct {
+	server.DefaultMiddleware
+}
 
 func NewServerProfilerMiddleware() *ServerProfilerMiddleware {
 	return &ServerProfilerMiddleware{}
@@ -20,7 +22,8 @@ func NewServerProfilerMiddleware() *ServerProfilerMiddleware {
 // OnRequest handles the request phase
 func (m *ServerProfilerMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	// Run only in development mode and if the path is /__internal__/debug/pprof/
-	if constants.Mode != "development" || !strings.HasPrefix(ctx.Request.Path, constants.InternalPathPrefix+"/debug/pprof/") {
+	serverProfilerPath := constants.InternalPathPrefix + "/debug/pprof/"
+	if !strings.HasPrefix(ctx.Request.Path, serverProfilerPath) || constants.Mode != "development" {
 		next()
 		return
 	}
@@ -70,10 +73,6 @@ func (m *ServerProfilerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 		ctx.Response.Headers.Set(k, v[0])
 	}
 	ctx.Response.Body = rw.body.Bytes()
-}
-
-func (m *ServerProfilerMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
-	next()
 }
 
 // responseWriter implements http.ResponseWriter to capture pprof output

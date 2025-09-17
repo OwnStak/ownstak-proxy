@@ -5,13 +5,17 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
 ## Features
 - [x] AWS Lambda
     - [x] Invocation in BUFFERED mode
-    - [ ] Invocation in STREAMING mode
+    - [x] Invocation in STREAMING mode
     - [x] Basic error handling for Lambda functions
 - [x] Following redirects to another hosts (S3, etc...)
 - [x] Image Optimization
 - [x] Response streaming
     - [x] Streaming assets from S3 directly to client
-    - [ ] Streaming response from Lambda directly to client
+    - [x] Streaming response from Lambda directly to client
+- [x] Protocols
+    - [x] HTTP/1.1
+    - [x] HTTP/2.0
+    - [ ] HTTP/3.0 
 - [ ] Caching
 - [ ] Basic logging
 - [ ] Basic metrics
@@ -49,7 +53,7 @@ Or install the latest version from source on [GoLang website](https://go.dev/dl/
 
 ### 3. Install go packages
 ```bash
-./scripts/install.sh
+make install
 ```
 
 ### 4. Optional: Install libvips for Image Optimizer   
@@ -77,7 +81,7 @@ For libvips debugging, set `VIPS_DEBUG=true` env variable.
 Just run the following command to build the app and start the development server. 
 It will automatically rebuild the app when you make changes to the code.
 ```bash
-./scripts/dev.sh
+make
 ```
 If no certs are provided, it will generate self-signed cert/key/CA pairs for the development server.
 After proxy server starts, you can access the proxy server at [http://project-prod-123.aws-primary.org.localhost.ownstak.link:3000](http://project-prod-123.aws-primary.org.localhost.ownstak.link:3000)
@@ -95,17 +99,16 @@ The links are in the following format:
 ## Build
 To build the app for the target platforms specified in the `.env` file under `PLATFORMS` variable, run the following command:
 ```bash
-./scripts/build.sh
+make build
 ```
 
 ## Start
 To start the built binary for current platform, you can run the following command:
 ```bash
-./scripts/start.sh
+make start
 ```
 
 Or just run it directly. It's standalone executable without any dependencies.
-
 
 ## Proxy architecture
 The diagram below illustrates the request/response flow and how middlewares are executed. 
@@ -135,3 +138,25 @@ Steps to release a new version:
 Every commit to the opened PR will trigger a preview/next release build. 
 The released version has format `{version}-next-{pr_number}-{timestamp}`. For example, `1.0.0-next-39-1744196863`. 
 You can find the actual released next version in the CI logs.
+
+## Build and run docker image locally
+Build:
+```bash
+make build-docker
+```
+
+Copy the image name and run the container in foreground:
+```bash
+docker run --network host -m 1024M -e PROVIDER=aws public.ecr.aws/ownstak/ownstak-proxy:1.0.0-next
+```
+
+## Memory Usage Troubleshooting
+To inspect and visualize memory usage, start the proxy in development mode:
+```bash
+make
+```
+
+In a new terminal tab, run:
+```bash
+go tool pprof -http=: http://localhost:3000/__ownstak__/debug/pprof/heap
+```

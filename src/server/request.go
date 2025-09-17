@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
+	"strconv"
 	"strings"
 )
 
@@ -17,10 +19,9 @@ type Request struct {
 	URL             string
 	Path            string
 	Headers         http.Header
-	Body            []byte
 	Query           url.Values // Query parameters (e.g. map[string][]string{"q": {"test"}})
 	Host            string     // Host header (e.g. ecommerce.com) or the one from X-Own-Host header
-	Protocol        string     // HTTP protocol version (e.g., HTTP/1.1, HTTP/2)
+	Protocol        string     // HTTP protocol version (e.g., HTTP/1.1, HTTP/2.0)
 	Scheme          string     // URL scheme (e.g. http, https)
 	Port            string     // Port number (e.g. 80, 443)
 	RemoteAddr      string     // Client's IP address (e.g. 192.168.1.1)
@@ -29,6 +30,8 @@ type Request struct {
 	OriginalScheme  string // Original scheme (the first in x-forwarded-proto header, e.g: http)
 	OriginalPort    string // Original port (the first in x-forwarded-port header, e.g: 80)
 	OriginalURL     string // Original URL (with default ports hidden, e.g: http://ecommerce.com/api/users)
+
+	bufferedBody []byte
 }
 
 // NewRequest creates a new Request from an http.Request
@@ -37,9 +40,8 @@ func NewRequest(httpReqs ...*http.Request) (*Request, error) {
 	// Return default empty request if no httpReqs provided
 	if len(httpReqs) == 0 {
 		return &Request{
-			Headers:         make(http.Header),
-			Body:            nil,
-			Query:           url.Values{},
+			Headers: make(http.Header),
+			Query:   url.Values{},
 		}, nil
 	}
 	httpReq := httpReqs[0]
@@ -117,9 +119,6 @@ func NewRequest(httpReqs ...*http.Request) (*Request, error) {
 			// If SplitHostPort fails, try to parse as IP directly
 			if ip := net.ParseIP(remoteAddr); ip != nil {
 				remoteAddr = ip.String()
-			} else {
-				// If all parsing fails, just use the received address
-				remoteAddr = remoteAddr
 			}
 		} else {
 			remoteAddr = host
@@ -198,39 +197,12 @@ func NewRequest(httpReqs ...*http.Request) (*Request, error) {
 		originalURL += "?" + httpReq.URL.RawQuery
 	}
 
-	// Read the body of the request
-	var body []byte
-	if httpReq.Body != nil {
-		var err error
-		body, err = io.ReadAll(httpReq.Body)
-		defer httpReq.Body.Close()
-		
-		if err != nil {
-			if err == io.EOF {
-				// io.EOF signals a graceful end of input, just ignore it and keep the body empty
-				body = []byte{}
-			} else if err == io.ErrUnexpectedEOF {
-				// io.ErrUnexpectedEOF signals that the client is gone while reading the body,
-				// so we return nil for both req and err and server will stop handling the request
-				return nil, nil
-			} else if strings.Contains(err.Error(), "connection reset") {
-				// Client disconnected, return nil for both req and err
-				logger.Debug("Client disconnected during request body read: %v", err)
-				return nil, nil
-			} else {
-				// Real error, return it
-				return nil, err
-			}
-		}
-	}
-
 	return &Request{
-		Method:          httpReq.Method,
+		Method:          strings.ToUpper(httpReq.Method),
 		URL:             httpReq.URL.String(),
 		Path:            httpReq.URL.Path,
 		Host:            host,
 		Headers:         headers,
-		Body:            body,
 		Query:           queryParams,
 		Protocol:        protocol,
 		Scheme:          scheme,
@@ -247,4 +219,81 @@ func NewRequest(httpReqs ...*http.Request) (*Request, error) {
 // Context returns a background context for the request
 func (req *Request) Context() context.Context {
 	return req.OriginalRequest.Context()
+}
+
+func (req *Request) Body() ([]byte, error) {
+	// If body is already buffered in memory from previous read, return it
+	if req.bufferedBody != nil {
+		return req.bufferedBody, nil
+	}
+
+	bodyReader := req.BodyReader()
+	defer bodyReader.Close()
+
+	body, err := io.ReadAll(bodyReader)
+	if err != nil {
+		if err == io.EOF {
+			// io.EOF signals a graceful end of input, just ignore it and keep the body empty
+		} else if err == io.ErrUnexpectedEOF {
+			// io.ErrUnexpectedEOF signals that the client is gone while reading the body,
+			// so we return nil for both req and err and server will stop handling the request
+		} else if strings.Contains(err.Error(), "connection reset") {
+			// Client disconnected, return nil for both req and err
+			logger.Debug("Client disconnected during request body read: %v", err)
+		} else {
+			// Real error, return it
+			return nil, err
+		}
+	}
+
+	// Buffer the whole body
+	req.bufferedBody = body
+
+	return body, nil
+}
+
+func (req *Request) BodyReader() io.ReadCloser {
+	// If body is buffered, return a reader for the buffered data
+	if req.bufferedBody != nil {
+		return io.NopCloser(bytes.NewReader(req.bufferedBody))
+	}
+
+	// No req, return empty reader
+	if req.OriginalRequest == nil || req.OriginalRequest.Body == nil {
+		return io.NopCloser(bytes.NewReader([]byte{}))
+	}
+
+	// Check if Content-Length is present
+	contentLength, err := req.ContentLength()
+	if err != nil {
+		// Content-Length is present but invalid, return empty reader
+		return io.NopCloser(bytes.NewReader([]byte{}))
+	}
+	if contentLength > 0 {
+		// Content-Length is present and valid, return reader with limit
+		return io.NopCloser(io.LimitReader(req.OriginalRequest.Body, int64(contentLength)))
+	}
+
+	// No Content-Length header, return original body reader
+	return req.OriginalRequest.Body
+}
+
+func (req *Request) SetBody(body []byte) {
+	req.bufferedBody = body
+}
+
+func (req *Request) ClearBody() {
+	req.bufferedBody = nil
+}
+
+func (req *Request) ContentLength() (int, error) {
+	contentLengthStr := req.Headers.Get(HeaderContentLength)
+	if contentLengthStr == "" {
+		return 0, nil
+	}
+	contentLength, err := strconv.Atoi(contentLengthStr)
+	if err != nil {
+		return 0, fmt.Errorf("content length header is invalid: %v", err)
+	}
+	return contentLength, nil
 }

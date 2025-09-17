@@ -23,4 +23,7 @@ RUN --mount=type=bind,source=dist/lib,target=/tmp/dist/lib mkdir -p /dist/lib &&
 COPY dist/${DIST_NAME}-${OS}-${ARCH} /dist/ownstak-proxy
 RUN chmod +x /dist/ownstak-proxy
 
-ENTRYPOINT ["/dist/ownstak-proxy"]
+# Create a startup script that sets ulimit for current process and runs the proxy
+RUN echo '#!/bin/sh\nulimit -n 65535\nexec /dist/ownstak-proxy "$@"' > /dist/entrypoint.sh && chmod +x /dist/entrypoint.sh
+
+ENTRYPOINT ["/dist/entrypoint.sh"]

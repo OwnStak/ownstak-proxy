@@ -16,7 +16,6 @@ func main() {
 	logger.Info("%s, Version: %s, Mode: %s, Provider: %s, PID: %d", constants.AppName, constants.Version, constants.Mode, provider, pid)
 	server.NewServer().
 		Use(middlewares.NewHealthcheckMiddleware()).
-		Use(middlewares.NewRequestIdMiddleware()).
 		Use(middlewares.NewServerInfoMiddleware()).
 		Use(middlewares.NewServerProfilerMiddleware()).
 		Use(middlewares.NewImageOptimizerMiddleware()).

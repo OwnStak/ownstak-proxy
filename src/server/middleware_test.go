@@ -69,7 +69,8 @@ func TestMiddlewaresChainExecute(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		assert.True(t, middleware.OnRequestCalled)
 		assert.True(t, middleware.OnResponseCalled)
@@ -111,7 +112,8 @@ func TestMiddlewaresChainExecute(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		expectedOrder := []string{
 			"OnRequest-MW1",
@@ -161,7 +163,8 @@ func TestMiddlewaresChainExecute(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		expectedOrder := []string{
 			"OnRequest-MW1",
@@ -217,7 +220,8 @@ func TestMiddlewaresChainExecute(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		expectedOrder := []string{
 			"OnRequest-MW1",
@@ -248,7 +252,8 @@ func TestMiddlewaresChainExecute(t *testing.T) {
 
 		// Should not panic or error
 		assert.NotPanics(t, func() {
-			chain.Execute(ctx)
+			chain.ExecuteOnRequest(ctx)
+			chain.ExecuteOnResponse(ctx)
 		})
 	})
 }
@@ -324,7 +329,8 @@ func TestMiddlewareChainWithRealComponents(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		// Verify modifications
 		assert.Equal(t, "HeaderMiddleware", ctx.Request.Headers.Get("X-Modified-By"))
@@ -364,7 +370,8 @@ func TestMiddlewareChainWithRealComponents(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		// Verify error was set
 		assert.Equal(t, "Test error from middleware", ctx.ErrorMesage)
@@ -414,7 +421,8 @@ func TestMiddlewareExecutionOrder(t *testing.T) {
 		serverRes := NewResponse()
 		ctx := NewRequestContext(serverReq, serverRes, nil)
 
-		chain.Execute(ctx)
+		chain.ExecuteOnRequest(ctx)
+		chain.ExecuteOnResponse(ctx)
 
 		expectedOrder := []string{
 			"OnRequest-A",
@@ -451,7 +459,8 @@ func TestMiddlewareChainEdgeCases(t *testing.T) {
 		ctx := NewRequestContext(req, resp, nil)
 
 		assert.NotPanics(t, func() {
-			chain.Execute(ctx)
+			chain.ExecuteOnRequest(ctx)
+			chain.ExecuteOnResponse(ctx)
 		})
 	})
 
@@ -482,7 +491,8 @@ func TestMiddlewareChainEdgeCases(t *testing.T) {
 
 		// Should panic since we don't have panic recovery in the middleware chain
 		assert.Panics(t, func() {
-			chain.Execute(ctx)
+			chain.ExecuteOnRequest(ctx)
+			chain.ExecuteOnResponse(ctx)
 		})
 	})
 }
@@ -493,6 +503,14 @@ type MockMiddleware struct {
 	OnResponseCalled bool
 	ShouldCallNext   bool
 	Name             string
+}
+
+func (m *MockMiddleware) OnStart(server *Server) {
+	// No-op for testing
+}
+
+func (m *MockMiddleware) OnStop(server *Server) {
+	// No-op for testing
 }
 
 func (m *MockMiddleware) OnRequest(ctx *RequestContext, next func()) {
@@ -516,6 +534,14 @@ type TrackingMiddleware struct {
 	shouldContinue bool
 }
 
+func (tm *TrackingMiddleware) OnStart(server *Server) {
+	*tm.tracker = append(*tm.tracker, "OnStart-"+tm.name)
+}
+
+func (tm *TrackingMiddleware) OnStop(server *Server) {
+	*tm.tracker = append(*tm.tracker, "OnStop-"+tm.name)
+}
+
 func (tm *TrackingMiddleware) OnRequest(ctx *RequestContext, next func()) {
 	*tm.tracker = append(*tm.tracker, "OnRequest-"+tm.name)
 	if tm.shouldContinue {
@@ -535,6 +561,14 @@ type CustomMiddleware struct {
 	name           string
 	onRequestFunc  func(ctx *RequestContext, next func())
 	onResponseFunc func(ctx *RequestContext, next func())
+}
+
+func (cm *CustomMiddleware) OnStart(server *Server) {
+	// No-op
+}
+
+func (cm *CustomMiddleware) OnStop(server *Server) {
+	// No-op
 }
 
 func (cm *CustomMiddleware) OnRequest(ctx *RequestContext, next func()) {

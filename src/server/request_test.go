@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"crypto/tls"
+	"io"
 	"net/http"
 	"ownstak-proxy/src/constants"
 	"strings"
@@ -89,7 +91,9 @@ func TestRequest(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, "POST", serverReq.Method)
-			assert.Equal(t, []byte("test body content"), serverReq.Body)
+			responseBody, err := serverReq.Body()
+			assert.NoError(t, err)
+			assert.Equal(t, []byte("test body content"), responseBody)
 		})
 
 		t.Run("should handle request with custom port", func(t *testing.T) {
@@ -370,7 +374,9 @@ func TestRequest(t *testing.T) {
 
 			serverReq, err := NewRequest(req)
 			assert.NoError(t, err)
-			assert.Empty(t, serverReq.Body)
+			body, err := serverReq.Body()
+			assert.NoError(t, err)
+			assert.Empty(t, body)
 		})
 
 		t.Run("should handle body read error", func(t *testing.T) {
@@ -385,7 +391,9 @@ func TestRequest(t *testing.T) {
 			// This should not cause an error in practice, but let's test the error handling path
 			serverReq, err := NewRequest(req)
 			assert.NoError(t, err) // http.NoBody should not cause an error
-			assert.Empty(t, serverReq.Body)
+			body, err := serverReq.Body()
+			assert.NoError(t, err)
+			assert.Empty(t, body)
 		})
 
 		t.Run("should handle large body", func(t *testing.T) {
@@ -397,7 +405,9 @@ func TestRequest(t *testing.T) {
 
 			serverReq, err := NewRequest(req)
 			assert.NoError(t, err)
-			assert.Equal(t, []byte(largeBody), serverReq.Body)
+			body, err := serverReq.Body()
+			assert.NoError(t, err)
+			assert.Equal(t, []byte(largeBody), body)
 		})
 
 		t.Run("should handle URL with fragment", func(t *testing.T) {
@@ -499,5 +509,289 @@ func TestRequest(t *testing.T) {
 			assert.Equal(t, "https://original.com/api/users?limit=10", serverReq.OriginalURL)
 		})
 
+	})
+
+	t.Run("BodyReading", func(t *testing.T) {
+		t.Run("Body", func(t *testing.T) {
+			t.Run("should read simple body", func(t *testing.T) {
+				bodyContent := "Hello, World!"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(bodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body)
+			})
+
+			t.Run("should read empty body", func(t *testing.T) {
+				req, err := http.NewRequest("GET", "http://example.com/api", nil)
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Empty(t, body)
+			})
+
+			t.Run("should read large body", func(t *testing.T) {
+				largeBodyContent := strings.Repeat("a", 100000) // 100KB
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(largeBodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(largeBodyContent), body)
+			})
+
+			t.Run("should cache body after first read", func(t *testing.T) {
+				bodyContent := "Test body"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(bodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				// First read
+				body1, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body1)
+
+				// Second read should return cached body
+				body2, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body2)
+				assert.Equal(t, body1, body2)
+			})
+
+			t.Run("should handle JSON body", func(t *testing.T) {
+				jsonBody := `{"name":"John","age":30}`
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(jsonBody))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+				req.Header.Set("Content-Type", "application/json")
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(jsonBody), body)
+			})
+
+			t.Run("should handle binary body", func(t *testing.T) {
+				binaryData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // PNG header
+				req, err := http.NewRequest("POST", "http://example.com/upload", bytes.NewReader(binaryData))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+				req.Header.Set("Content-Type", "image/png")
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, binaryData, body)
+			})
+		})
+
+		t.Run("BodyReader", func(t *testing.T) {
+			t.Run("should return reader for simple body", func(t *testing.T) {
+				bodyContent := "Hello, World!"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(bodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				reader := serverReq.BodyReader()
+				defer reader.Close()
+
+				body, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body)
+			})
+
+			t.Run("should return reader for empty body", func(t *testing.T) {
+				req, err := http.NewRequest("GET", "http://example.com/api", nil)
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				reader := serverReq.BodyReader()
+				defer reader.Close()
+
+				body, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.Empty(t, body)
+			})
+
+			t.Run("should return reader for large body", func(t *testing.T) {
+				largeBodyContent := strings.Repeat("b", 50000) // 50KB
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(largeBodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				reader := serverReq.BodyReader()
+				defer reader.Close()
+
+				body, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(largeBodyContent), body)
+			})
+
+			t.Run("should work after Body() has been called", func(t *testing.T) {
+				bodyContent := "Test content"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(bodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				// First read with Body()
+				body1, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body1)
+
+				// Then read with BodyReader()
+				reader := serverReq.BodyReader()
+				defer reader.Close()
+
+				body2, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body2)
+			})
+
+			t.Run("should work with partial reads", func(t *testing.T) {
+				bodyContent := "This is a longer test content for partial reading"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(bodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				reader := serverReq.BodyReader()
+				defer reader.Close()
+
+				// Read in chunks
+				chunk1 := make([]byte, 10)
+				n1, err := reader.Read(chunk1)
+				assert.NoError(t, err)
+				assert.Equal(t, 10, n1)
+				assert.Equal(t, []byte("This is a "), chunk1)
+
+				chunk2 := make([]byte, 20)
+				n2, err := reader.Read(chunk2)
+				assert.NoError(t, err)
+				assert.Equal(t, 20, n2)
+				assert.Equal(t, []byte("longer test content "), chunk2)
+
+				// Read rest
+				remaining, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.Equal(t, []byte("for partial reading"), remaining)
+			})
+		})
+
+		t.Run("SetBody", func(t *testing.T) {
+			t.Run("should set body content", func(t *testing.T) {
+				req, err := http.NewRequest("GET", "http://example.com/api", nil)
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				newBody := []byte("New body content")
+				serverReq.SetBody(newBody)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, newBody, body)
+			})
+
+			t.Run("should override original body", func(t *testing.T) {
+				originalBody := "Original content"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(originalBody))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				newBody := []byte("Overridden content")
+				serverReq.SetBody(newBody)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, newBody, body)
+			})
+		})
+
+		t.Run("ClearBody", func(t *testing.T) {
+			t.Run("should clear buffered body", func(t *testing.T) {
+				bodyContent := "Content to clear"
+				req, err := http.NewRequest("POST", "http://example.com/api", strings.NewReader(bodyContent))
+				assert.NoError(t, err)
+				req.Host = "example.com"
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				// First read body to buffer it
+				body1, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Equal(t, []byte(bodyContent), body1)
+
+				// Clear the body
+				serverReq.ClearBody()
+
+				// Now body should be empty since original reader was consumed
+				body2, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Empty(t, body2)
+			})
+		})
+
+		t.Run("EdgeCases", func(t *testing.T) {
+			t.Run("should handle nil body reader", func(t *testing.T) {
+				req, err := http.NewRequest("POST", "http://example.com/api", nil)
+				assert.NoError(t, err)
+				req.Host = "example.com"
+				req.Body = nil
+
+				serverReq, err := NewRequest(req)
+				assert.NoError(t, err)
+
+				body, err := serverReq.Body()
+				assert.NoError(t, err)
+				assert.Empty(t, body)
+
+				reader := serverReq.BodyReader()
+				defer reader.Close()
+				readerBody, err := io.ReadAll(reader)
+				assert.NoError(t, err)
+				assert.Empty(t, readerBody)
+			})
+		})
 	})
 }

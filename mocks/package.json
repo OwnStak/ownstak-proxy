@@ -11,6 +11,8 @@
         "start": "npm run stop && npm run start:lambda && npm run start:organizations && npm run start:sts && echo 'All AWS mocks started in background'"
     },
     "dependencies": {
+        "@smithy/eventstream-codec": "4.0.5",
+        "@smithy/util-utf8": "4.0.0",
         "mime": "4.0.7"
     }
 }

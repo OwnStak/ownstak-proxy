@@ -1,17 +1,16 @@
 package server
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"ownstak-proxy/src/constants"
 	"ownstak-proxy/src/logger"
+	"strconv"
+	"strings"
 )
 
 type Response struct {
-	Status       int
+	Status           int
 	Headers          http.Header
 	Body             []byte
 	Ended            bool
@@ -25,7 +24,7 @@ func NewResponse(responseWriter ...http.ResponseWriter) *Response {
 	headers := make(http.Header)
 
 	res := &Response{
-		Status:       http.StatusOK,
+		Status:           http.StatusOK,
 		Headers:          headers,
 		Body:             []byte{},
 		Ended:            false,
@@ -61,45 +60,45 @@ func (res *Response) EnableStreaming(value ...bool) {
 
 // Writes body chunks to the response writer
 func (res *Response) Write(chunk []byte) (int, error) {
-	if res.Streaming {
-		if res.ResponseWriter == nil {
-			logger.Warn("Attempted to stream response with nil ResponseWriter")
-			res.Body = append(res.Body, chunk...)
-			return len(chunk), nil
-		}
-
-		if !res.StreamingStarted {
-			res.StreamingStarted = true
-			// Set all headers before starting to write
-			for key, values := range res.Headers {
-				for _, value := range values {
-					res.ResponseWriter.Header().Add(key, value)
-				}
-			}
-			// Add chunked transfer encoding if not already present
-			if res.Headers.Get(HeaderTransferEncoding) == "" {
-				res.Headers.Add(HeaderTransferEncoding, "chunked")
-			}
-			res.ResponseWriter.WriteHeader(res.Status)
-		}
-
-		n, err := res.ResponseWriter.Write(chunk)
-		if err != nil {
-			logger.Debug("Failed to stream the response. Client is gone: %v", err)
-		}
-
-		// Flush if the writer supports it
-		if flusher, ok := res.ResponseWriter.(http.Flusher); ok {
-			flusher.Flush()
-		}
-
-		return n, err
+	if res.Ended {
+		return 0, fmt.Errorf("response already ended")
 	}
 
 	// If streaming is disabled, just accumulate in body
 	// and the body will be sent when End() is called
-	res.Body = append(res.Body, chunk...)
-	return len(chunk), nil
+	if !res.Streaming {
+		res.Body = append(res.Body, chunk...)
+		return len(chunk), nil
+	}
+
+	if res.ResponseWriter == nil {
+		logger.Warn("Attempted to stream response with nil ResponseWriter")
+		res.Body = append(res.Body, chunk...)
+		return len(chunk), nil
+	}
+
+	if !res.StreamingStarted {
+		// Add chunked transfer encoding if not already present
+		// and content-length header is not present.
+		// NOTE: They cannot be used together.
+		if res.Headers.Get(HeaderTransferEncoding) == "" && res.Headers.Get(HeaderContentLength) == "" {
+			res.Headers.Add(HeaderTransferEncoding, "chunked")
+		}
+
+		res.WriteHead(res.Status)
+	}
+
+	n, err := res.ResponseWriter.Write(chunk)
+	if err != nil {
+		logger.Debug("Failed to stream the response. Client is gone: %v", err)
+	}
+
+	// Flush if the writer supports it
+	if flusher, ok := res.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	return n, err
 }
 
 func (res *Response) Clear() {
@@ -107,14 +106,14 @@ func (res *Response) Clear() {
 	res.Ended = false
 	res.Streaming = false
 	res.StreamingStarted = false
-	res.ClearHeaders()
+	res.ClearHeaders(true)
 	res.ClearBody()
 }
 
 func (res *Response) ClearHeaders(preserveInternalHeaders ...bool) {
 	internalHeaders := make(http.Header)
 	for k, v := range res.Headers {
-		if strings.HasPrefix(strings.ToLower(k), strings.ToLower(HeaderXOwnPrefix)) {
+		if res.IsInternalHeader(k) {
 			internalHeaders[k] = v
 		}
 	}
@@ -140,33 +139,33 @@ func (res *Response) End() bool {
 	if res.Ended {
 		return false
 	}
-	res.Ended = true
 
-	// If we're already streaming or have no response writer, don't do anything more
+	// If we're already streaming or have no response writer, don't do anything more.
+	// Go net/http will automatically finish the stream when main handler exits.
 	if res.StreamingStarted || res.ResponseWriter == nil {
 		return false
 	}
 
-	// Set headers
-	for key, values := range res.Headers {
-		for _, value := range values {
-			res.ResponseWriter.Header().Add(key, value)
-		}
+	// Remove transfer-encoding header if it's present
+	// and update the content-length header when we have the whole response buffered in memory.
+	if res.Headers.Get(HeaderTransferEncoding) != "" {
+		res.Headers.Del(HeaderTransferEncoding)
+	}
+	if res.Headers.Get(HeaderContentLength) == "" {
+		res.Headers.Set(HeaderContentLength, strconv.Itoa(len(res.Body)))
 	}
 
-	// Write status and body
-	res.ResponseWriter.WriteHeader(res.Status)
+	// Write status and headers
+	res.WriteHead(res.Status)
+
+	// Write body
 	res.ResponseWriter.Write(res.Body)
 	if flusher, ok := res.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
 
+	res.Ended = true
 	return true
-}
-
-// For compatibility with http.ResponseWriter
-func (res *Response) Header() http.Header {
-	return res.Headers
 }
 
 func (res *Response) AppendHeader(key, value string) {
@@ -179,76 +178,49 @@ func (res *Response) AppendHeader(key, value string) {
 }
 
 // For compatibility with http.ResponseWriter
-func (res *Response) WriteHeader(status int) {
+func (res *Response) WriteHead(status int) {
+	if res.Ended || res.StreamingStarted {
+		return
+	}
+
 	if status == 0 {
 		status = http.StatusOK
 	}
+
 	res.Status = status
+	res.StreamingStarted = true
+
+	// Set headers that cannot be overriden
+	res.Headers.Set(HeaderXOwnProxyVersion, constants.Version)
+	res.Headers.Set(HeaderServer, constants.AppName)
+
+	if res.ResponseWriter == nil {
+		return
+	}
+
+	// Set all headers before starting to write
+	for key, values := range res.Headers {
+		for _, value := range values {
+			res.ResponseWriter.Header().Add(key, value)
+		}
+	}
+
+	res.ResponseWriter.WriteHeader(res.Status)
 }
 
-func (res *Response) Serialize() string {
-	serialized := make(map[string]interface{})
-	serialized["status"] = res.Status
-	serialized["headers"] = res.Headers
+func (res *Response) IsInternalHeader(key string) bool {
+	key = strings.ToLower(key)
 
-	// Convert body to base64 string for JSON serialization
-	serialized["body"] = base64.StdEncoding.EncodeToString(res.Body)
-
-	data, err := json.Marshal(serialized)
-	if err != nil {
-		// Return empty byte slice on error
-		return ""
-	}
-	return string(data)
-}
-
-func DeserializeResponse(data string) (*Response, error) {
-	if data == "" {
-		return nil, fmt.Errorf("empty data provided for deserialization")
+	if strings.HasPrefix(key, strings.ToLower(HeaderXOwnPrefix)) {
+		return true
 	}
 
-	var serialized map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &serialized); err != nil {
-		return nil, fmt.Errorf("invalid JSON data: %v", err)
+	// Also preserved protected headers
+	// such as:
+	// x-request-id
+	if key == strings.ToLower(HeaderRequestID) {
+		return true
 	}
 
-	res := NewResponse()
-
-	// Handle status
-	if status, ok := serialized["status"].(float64); ok {
-		res.Status = int(status)
-	} else {
-		return nil, fmt.Errorf("invalid or missing status field")
-	}
-
-	// Handle headers
-	if headers, ok := serialized["headers"].(map[string]interface{}); ok {
-		res.Headers = make(http.Header)
-		for key, value := range headers {
-			if values, ok := value.([]interface{}); ok {
-				for _, v := range values {
-					if str, ok := v.(string); ok {
-						res.Headers.Add(key, str)
-					}
-				}
-			} else if str, ok := value.(string); ok {
-				res.Headers.Set(key, str)
-			}
-		}
-	} else {
-		return nil, fmt.Errorf("invalid or missing headers field")
-	}
-
-	// Handle body
-	if bodyStr, ok := serialized["body"].(string); ok {
-		body, err := base64.StdEncoding.DecodeString(bodyStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode body: %v", err)
-		}
-		res.Body = body
-	} else {
-		return nil, fmt.Errorf("invalid or missing body field")
-	}
-
-	return res, nil
+	return false
 }

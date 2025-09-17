@@ -97,11 +97,15 @@ var supportedOutputFormats = map[string]bool{
 }
 
 type ImageOptimizerMiddleware struct {
+	server.DefaultMiddleware
+
 	enabled bool
 	// Channel to control concurrent image processing and fetching
-	fetchQueue   chan struct{}
-	processQueue chan struct{}
-	client       *http.Client
+	fetchQueue              chan struct{}
+	fetchQueueConcurrency   int
+	processQueue            chan struct{}
+	processQueueConcurrency int
+	client                  *http.Client
 }
 
 func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
@@ -136,18 +140,30 @@ func NewImageOptimizerMiddleware() *ImageOptimizerMiddleware {
 	processQueue := make(chan struct{}, processConcurrency)
 	fetchQueue := make(chan struct{}, fetchConcurrency)
 
+	logger.Info("Image Optimizer middleware initialized with concurrency (fetch: %d, process: %d)", fetchConcurrency, processConcurrency)
+
 	return &ImageOptimizerMiddleware{
-		enabled:      enabled,
-		fetchQueue:   fetchQueue,
-		processQueue: processQueue,
-		client:       client,
+		enabled:                 enabled,
+		fetchQueue:              fetchQueue,
+		fetchQueueConcurrency:   fetchConcurrency,
+		processQueue:            processQueue,
+		processQueueConcurrency: processConcurrency,
+		client:                  client,
 	}
 }
 
 func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
 	// Run the Image Optimizer middleware only on below path
-	if ctx.Request.Path != constants.InternalPathPrefix+"/image" {
+	imageOptimizerPath := constants.InternalPathPrefix + "/image"
+	if ctx.Request.Path != imageOptimizerPath && ctx.Request.Path != imageOptimizerPath+"/" {
 		next()
+		return
+	}
+
+	// Only allow GET, HEAD and OPTIONS methods to avoid caching issues
+	// and wasting resources on processing requests with large bodies.
+	if ctx.Request.Method != "GET" && ctx.Request.Method != "HEAD" && ctx.Request.Method != "OPTIONS" {
+		ctx.Error("Image Optimizer failed: Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -288,15 +304,18 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 		// Set response headers and
 		ctx.Response.Headers.Set(server.HeaderContentType, resp.Header.Get(server.HeaderContentType))
 		ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-		ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=false,url=%s,fetchDuration=%dms", urlStr, fetchDuration.Milliseconds()))
 		ctx.Response.Status = http.StatusOK
+
+		ctx.Debug("io-enabled=false")
+		ctx.Debug("io-url=" + urlStr)
+		ctx.Debug("io-fetch-duration=" + strconv.FormatInt(fetchDuration.Milliseconds(), 10))
 
 		// Enable streaming for the response
 		ctx.Response.EnableStreaming()
 
 		// Stream the image data directly to the response
 		if _, err := io.Copy(ctx.Response, limitedReader); err != nil {
-			ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to stream image: %v", err), http.StatusInternalServerError)
+			ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to stream image: %v", err), server.StatusInternalError)
 			return
 		}
 		return
@@ -339,7 +358,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	srcImageFilename := fmt.Sprintf("/tmp/image-optimizer-src-%s.%s", uuid.New().String(), format)
 	srcImageFile, err := os.Create(srcImageFilename)
 	if err != nil {
-		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to create temporary srcImageFile: %v", err), http.StatusInternalServerError)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to create temporary srcImageFile: %v", err), server.StatusInternalError)
 		return
 	}
 	// Always remove the tmp file after we are done
@@ -351,7 +370,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 
 	// Stream the image to the tmp file
 	if _, err := io.Copy(srcImageFile, limitedReader); err != nil {
-		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to stream image: %v", err), http.StatusInternalServerError)
+		ctx.Error(fmt.Sprintf("Image Optimizer failed: Failed to stream image: %v", err), server.StatusInternalError)
 		return
 	}
 	srcImageFile.Close()
@@ -381,7 +400,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	}
 
 	if srcWidth == 0 || srcHeight == 0 {
-		ctx.Error("Image Optimizer failed: Failed to get image dimensions", http.StatusInternalServerError)
+		ctx.Error("Image Optimizer failed: Failed to get image dimensions", server.StatusInternalError)
 		return
 	}
 
@@ -431,7 +450,7 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 		scale := float64(targetWidth) / float64(srcWidth)
 		resizedImage, err := vips.ResizeImage(srcImage, scale)
 		if err != nil {
-			ctx.Error(fmt.Sprintf("Failed to resize image: %v", err), http.StatusInternalServerError)
+			ctx.Error(fmt.Sprintf("Failed to resize image: %v", err), server.StatusInternalError)
 			return
 		}
 		defer resizedImage.Free()
@@ -441,9 +460,20 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	// Export image to the specified format
 	ctx.Response.Headers.Set(server.HeaderContentType, "image/"+format)
 	ctx.Response.Headers.Set(server.HeaderCacheControl, cacheControl)
-	ctx.Response.Headers.Set(server.HeaderXOwnImageOptimizer, fmt.Sprintf("enabled=%t,url=%s,srcFormat=%s,format=%s,srcWidth=%d,width=%d,srcHeight=%d,height=%d,quality=%d,fetchDuration=%dms,duration=%dms",
-		enabled, urlStr, srcFormat, format, srcWidth, targetWidth, srcHeight, targetHeight, qualityInt, fetchDuration.Milliseconds(), time.Since(startTime).Milliseconds()))
 	ctx.Response.Status = http.StatusOK
+
+	// Store debug information about the image optimization
+	ctx.Debug("io-enabled=" + strconv.FormatBool(enabled))
+	ctx.Debug("io-url=" + urlStr)
+	ctx.Debug("io-src-format=" + srcFormat)
+	ctx.Debug("io-format=" + format)
+	ctx.Debug("io-src-width=" + strconv.Itoa(srcWidth))
+	ctx.Debug("io-width=" + strconv.Itoa(targetWidth))
+	ctx.Debug("io-src-height=" + strconv.Itoa(srcHeight))
+	ctx.Debug("io-height=" + strconv.Itoa(targetHeight))
+	ctx.Debug("io-quality=" + strconv.Itoa(qualityInt))
+	ctx.Debug("io-fetch-duration=" + strconv.FormatInt(fetchDuration.Milliseconds(), 10))
+	ctx.Debug("io-duration=" + strconv.FormatInt(time.Since(startTime).Milliseconds(), 10))
 
 	// Enable streaming for the response
 	ctx.Response.EnableStreaming()
@@ -451,14 +481,14 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	outImageFilename := fmt.Sprintf("/tmp/image-optimizer-out-%s.%s", uuid.New().String(), format)
 	err = vips.SaveImageToFile(srcImage, outImageFilename, qualityInt)
 	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to save image: %v", err), http.StatusInternalServerError)
+		ctx.Error(fmt.Sprintf("Failed to save image: %v", err), server.StatusInternalError)
 		return
 	}
 
 	// Start streaming the image from tmp file to client
 	outImageFile, err := os.Open(outImageFilename)
 	if err != nil {
-		ctx.Error(fmt.Sprintf("Failed to open image: %v", err), http.StatusInternalServerError)
+		ctx.Error(fmt.Sprintf("Failed to open image: %v", err), server.StatusInternalError)
 		return
 	}
 	defer outImageFile.Close()
@@ -466,10 +496,6 @@ func (m *ImageOptimizerMiddleware) OnRequest(ctx *server.RequestContext, next fu
 	io.Copy(ctx.Response, outImageFile)
 
 	runtime.GC()
-}
-
-func (m *ImageOptimizerMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
-	next()
 }
 
 func GetQueryParam(query map[string][]string, param1, param2, defaultValue string) string {

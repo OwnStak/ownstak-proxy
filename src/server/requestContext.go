@@ -4,14 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"net"
+	"net/http"
 	"ownstak-proxy/src/constants"
+	"ownstak-proxy/src/logger"
 	"ownstak-proxy/src/utils"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // RequestContext encapsulates the request, response, and shared resources
 // for a single HTTP request lifecycle
 type RequestContext struct {
+	RequestId   string
 	Request     *Request
 	Response    *Response
 	Server      *Server
@@ -21,7 +27,19 @@ type RequestContext struct {
 
 // NewRequestContext creates a new context for a request/response pair
 func NewRequestContext(req *Request, res *Response, server *Server) *RequestContext {
+	// Use existing request ID if present, otherwise generate a new one
+	requestId := req.Headers.Get(HeaderRequestID)
+	if requestId == "" {
+		requestId = uuid.New().String()
+		req.Headers.Set(HeaderRequestID, requestId)
+	}
+
+	// Update request ID headers
+	req.Headers.Set(HeaderRequestID, requestId)
+	res.Headers.Set(HeaderRequestID, requestId)
+
 	return &RequestContext{
+		RequestId:   requestId,
 		Request:     req,
 		Response:    res,
 		Server:      server,
@@ -32,31 +50,53 @@ func NewRequestContext(req *Request, res *Response, server *Server) *RequestCont
 
 // Error sets an error response with the given message and status code to the current context and returns the response.
 func (ctx *RequestContext) Error(errorMessage string, errorStatus int) {
+	requestId := ctx.Request.Headers.Get(HeaderRequestID)
+	reqAccept := ctx.Request.Headers.Get(HeaderAccept)
+	if reqAccept == "" {
+		reqAccept = ContentTypeJSON
+	}
+	resContentType := ctx.Response.Headers.Get(HeaderContentType)
+	if resContentType == "text/html" {
+		resContentType = ContentTypeHTML
+	}
+
+	contentType := ContentTypeJSON
+	if strings.Contains(reqAccept, ContentTypeHTML) {
+		contentType = ContentTypeHTML
+	}
+	if strings.Contains(resContentType, ContentTypeHTML) {
+		contentType = ContentTypeHTML
+	}
+
 	// Set error information to context
 	ctx.ErrorMesage = errorMessage
 	ctx.ErrorStatus = errorStatus
+
+	// If streaming already started and headers with status code are already sent,
+	// there's no way for as to alter the status code. Just close the connection
+	// to cause TCP reset error on the client side to let CDN know this 200 response isn't valid
+	// and should not be cached.
+	if ctx.Response.StreamingStarted {
+		ctx.CloseConnection()
+		return
+	}
 
 	// Clear the current response and write the new error response
 	ctx.Response.Clear()
 	ctx.Response.Status = errorStatus
 
-	// Get Accept header from request to determine response format
-	accept := ctx.Request.Headers.Get(HeaderAccept)
-	if accept == "" {
-		accept = ContentTypeJSON
-	}
-
-	requestId := ctx.Request.Headers.Get(HeaderRequestID)
-
 	// If client accepts HTML, return HTML error
 	// Otherwise, return JSON error
-	if strings.Contains(accept, ContentTypeHTML) {
+	if contentType == ContentTypeHTML {
 		ctx.Response.Headers.Set(HeaderContentType, ContentTypeHTML)
 		ctx.Response.Body = []byte(ToHtmlErrorBody(errorMessage, errorStatus, requestId))
 	} else {
 		ctx.Response.Headers.Set(HeaderContentType, ContentTypeJSON)
 		ctx.Response.Body = []byte(ToJsonErrorBody(errorMessage, errorStatus, requestId))
 	}
+
+	// End the response
+	ctx.Response.End()
 }
 
 func ToHtmlErrorBody(errorMessage string, errorCode int, requestId string) string {
@@ -108,7 +148,7 @@ func ToHtmlErrorBody(errorMessage string, errorCode int, requestId string) strin
 						background:
 							radial-gradient(ellipse 60%% 40%% at 0%% 100%%, rgba(231, 76, 60, 0.07) 0%%, rgba(231, 76, 60, 0.09) 60%%, rgba(255,255,255,0) 100%%),
 							radial-gradient(ellipse 40%% 30%% at 100%% 0%%, rgba(231, 76, 60, 0.07) 0%%, rgba(231, 76, 60, 0.05) 60%%, rgba(255,255,255,0) 100%%),
-							#fff;
+							#fafafa;
 						color: #222;
 						margin: 0;
 						padding: 0;
@@ -268,4 +308,60 @@ func (ctx *RequestContext) Debug(value string) bool {
 
 	ctx.Response.AppendHeader(HeaderXOwnProxyDebug, value)
 	return true
+}
+
+// CloseConnection immediately closes the TCP connection to indicate the response is broken
+// This sends a TCP RST (reset) packet to the browser, signaling that the connection
+// should be terminated abnormally and the response is invalid/incomplete.
+//
+// TCP RST behavior:
+// - Browser receives "connection reset by peer" error
+// - Response is considered invalid and won't be cached by CDNs/proxies
+// - Client will typically retry the request or show an error
+// - For HTTP/2, this also triggers RST_STREAM for the specific stream
+func (ctx *RequestContext) CloseConnection() bool {
+	if ctx.Response.Ended || ctx.Response.ResponseWriter == nil {
+		return false
+	}
+
+	// Mark as ended to prevent further operations
+	ctx.Response.Ended = true
+
+	// Always try to hijack the connection and force a TCP reset
+	// This works for both HTTP/1.x and HTTP/2 connections
+	if hijacker, ok := ctx.Response.ResponseWriter.(http.Hijacker); ok {
+		if conn, _, err := hijacker.Hijack(); err == nil {
+			// Force immediate TCP reset by setting SO_LINGER to 0
+			// This causes the connection to be reset when closed, sending RST packet.
+			// In most browsers, this will trigger
+			if tcpConn, ok := conn.(*net.TCPConn); ok {
+				// Set linger timeout to 0 to force TCP reset
+				tcpConn.SetLinger(0)
+				logger.Debug("TCP connection reset with SO_LINGER=0 (RST packet sent)")
+			} else {
+				logger.Debug("TCP connection closed immediately (fallback)")
+			}
+			conn.Close()
+			return true
+		}
+	}
+
+	// Fallback: For HTTP/2 when hijacking fails, use panic to trigger RST_STREAM
+	if ctx.Request != nil && strings.HasPrefix(ctx.Request.Protocol, "HTTP/2") {
+		if _, ok := ctx.Response.ResponseWriter.(http.Pusher); ok {
+			// Use panic with http.ErrAbortHandler to trigger RST_STREAM
+			logger.Debug("HTTP/2 stream reset via ErrAbortHandler (fallback)")
+			panic(http.ErrAbortHandler)
+		}
+	}
+
+	// Last resort: close the response writer normally
+	if closer, ok := ctx.Response.ResponseWriter.(interface{ Close() error }); ok {
+		logger.Debug("Connection closed via response writer close (last resort)")
+		closer.Close()
+		return true
+	}
+
+	logger.Debug("Failed to close connection - no suitable method available")
+	return false
 }

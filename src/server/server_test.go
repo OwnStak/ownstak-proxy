@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -48,18 +48,18 @@ func TestServer(t *testing.T) {
 		t.Run("should create server with default values", func(t *testing.T) {
 			server := NewServer()
 			assert.NotNil(t, server)
-			assert.Equal(t, "0.0.0.0", server.host)
-			assert.Equal(t, "80", server.httpPort)
-			assert.Equal(t, "443", server.httpsPort)
-			assert.Equal(t, "/tmp/certs/cert.pem", server.certFile)
-			assert.Equal(t, "/tmp/certs/key.pem", server.keyFile)
-			assert.Equal(t, "/tmp/certs/ca.pem", server.caFile)
-			assert.Equal(t, 2*time.Minute, server.reqReadTimeout)
-			assert.Equal(t, 2*time.Hour, server.resWriteTimeout)
-			assert.Equal(t, 60*time.Second, server.reqIdleTimeout)
-			assert.Equal(t, 64*1024, server.reqMaxHeadersSize)
-			assert.Equal(t, 10*1024*1024, server.reqMaxBodySize)
-			assert.NotEmpty(t, server.serverId)
+			assert.Equal(t, "0.0.0.0", server.Host)
+			assert.Equal(t, "80", server.HttpPort)
+			assert.Equal(t, "443", server.HttpsPort)
+			assert.Equal(t, "/tmp/certs/cert.pem", server.CertFile)
+			assert.Equal(t, "/tmp/certs/key.pem", server.KeyFile)
+			assert.Equal(t, "/tmp/certs/ca.pem", server.CaFile)
+			assert.Equal(t, 2*time.Minute, server.ReqReadTimeout)
+			assert.Equal(t, 2*time.Hour, server.ResWriteTimeout)
+			assert.Equal(t, 60*time.Second, server.ReqIdleTimeout)
+			assert.Equal(t, 64*1024, server.ReqMaxHeadersSize)
+			assert.Equal(t, 6*1024*1024, server.ReqMaxBodySize)
+			assert.NotEmpty(t, server.ServerId)
 			assert.NotNil(t, server.MiddlewaresChain)
 		})
 
@@ -75,14 +75,14 @@ func TestServer(t *testing.T) {
 
 			server := NewServer()
 			assert.NotNil(t, server)
-			assert.Equal(t, "127.0.0.1", server.host)
-			assert.Equal(t, "8080", server.httpPort)
-			assert.Equal(t, "8443", server.httpsPort)
-			assert.Equal(t, 30*time.Second, server.reqReadTimeout)
-			assert.Equal(t, time.Hour, server.resWriteTimeout)
-			assert.Equal(t, 30*time.Second, server.reqIdleTimeout)
-			assert.Equal(t, 2048, server.reqMaxHeadersSize)
-			assert.Equal(t, 5242880, server.reqMaxBodySize)
+			assert.Equal(t, "127.0.0.1", server.Host)
+			assert.Equal(t, "8080", server.HttpPort)
+			assert.Equal(t, "8443", server.HttpsPort)
+			assert.Equal(t, 30*time.Second, server.ReqReadTimeout)
+			assert.Equal(t, time.Hour, server.ResWriteTimeout)
+			assert.Equal(t, 30*time.Second, server.ReqIdleTimeout)
+			assert.Equal(t, 2048, server.ReqMaxHeadersSize)
+			assert.Equal(t, 5242880, server.ReqMaxBodySize)
 		})
 
 		t.Run("should handle invalid environment values", func(t *testing.T) {
@@ -94,82 +94,84 @@ func TestServer(t *testing.T) {
 
 			server := NewServer()
 			assert.NotNil(t, server)
-			assert.Equal(t, 2*time.Minute, server.reqReadTimeout)
-			assert.Equal(t, 2*time.Hour, server.resWriteTimeout)
-			assert.Equal(t, 60*time.Second, server.reqIdleTimeout)
-			assert.Equal(t, 64*1024, server.reqMaxHeadersSize)
-			assert.Equal(t, 10*1024*1024, server.reqMaxBodySize)
+			assert.Equal(t, 2*time.Minute, server.ReqReadTimeout)
+			assert.Equal(t, 2*time.Hour, server.ResWriteTimeout)
+			assert.Equal(t, 60*time.Second, server.ReqIdleTimeout)
+			assert.Equal(t, 64*1024, server.ReqMaxHeadersSize)
+			assert.Equal(t, 6*1024*1024, server.ReqMaxBodySize)
 		})
 	})
 
 	t.Run("MaxBodySize", func(t *testing.T) {
-		setupTestEnv()
-		defer cleanupTestEnv()
+		// Don't call setupTestEnv() here as it clears environment variables
+		// We need to set REQ_MAX_BODY_SIZE for this test
 
 		t.Run("should limit request body size", func(t *testing.T) {
 			// Set a small max body size for testing
 			os.Setenv("REQ_MAX_BODY_SIZE", "1024")
 			server := NewServer()
-			
+
 			// Create a request with a body larger than the limit
 			largeBody := make([]byte, 2048) // 2KB body
 			req := httptest.NewRequest("POST", "http://example.com", nil)
 			req.Body = io.NopCloser(bytes.NewReader(largeBody))
 			req.ContentLength = int64(len(largeBody))
+			req.Header.Set("Content-Length", strconv.Itoa(len(largeBody)))
 			req.Host = "example.com"
 			req.RemoteAddr = "127.0.0.1:8080"
-			
+
 			res := httptest.NewRecorder()
-			
+
 			// This should trigger the max body size limit
 			server.HandleRequest(res, req)
-			
+
 			// The request should fail due to body size limit
-			assert.Equal(t, http.StatusRequestEntityTooLarge, res.Code)
+			assert.Equal(t, StatusContentTooLarge, res.Code)
 		})
 
 		t.Run("should accept request within body size limit", func(t *testing.T) {
 			// Set a reasonable max body size
 			os.Setenv("REQ_MAX_BODY_SIZE", "1024")
 			server := NewServer()
-			
+
 			// Create a request with a body within the limit
 			smallBody := make([]byte, 512) // 512B body
 			req := httptest.NewRequest("POST", "http://example.com", nil)
 			req.Body = io.NopCloser(bytes.NewReader(smallBody))
 			req.ContentLength = int64(len(smallBody))
+			req.Header.Set("Content-Length", strconv.Itoa(len(smallBody)))
 			req.Host = "example.com"
 			req.RemoteAddr = "127.0.0.1:8080"
-			
+
 			res := httptest.NewRecorder()
-			
+
 			// This should work fine
 			server.HandleRequest(res, req)
-			
+
 			// The request should be processed normally
 			assert.Equal(t, http.StatusOK, res.Code)
 		})
 
 		t.Run("should handle client disconnection gracefully", func(t *testing.T) {
 			server := NewServer()
-			
+
 			// Create a request with a context that's already cancelled
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel() // Cancel immediately to simulate client disconnection
-			
+
 			req := httptest.NewRequest("GET", "http://example.com", nil)
 			req = req.WithContext(ctx)
 			req.Host = "example.com"
 			req.RemoteAddr = "127.0.0.1:8080"
-			
+
 			res := httptest.NewRecorder()
-			
+
 			// This should handle the cancelled context gracefully
 			server.HandleRequest(res, req)
-			
+
 			// Should not return an error status, just handle gracefully
 			// The response might be empty or have a specific status
-			assert.NotEqual(t, http.StatusInternalServerError, res.Code)
+			assert.NotEqual(t, StatusInternalError, res.Code)
 		})
 	})
 
@@ -183,8 +185,8 @@ func TestServer(t *testing.T) {
 
 			server.Use(middleware)
 
-			assert.Len(t, server.MiddlewaresChain.middlewares, 1)
-			assert.Equal(t, middleware, server.MiddlewaresChain.middlewares[0])
+			assert.Equal(t, 1, server.MiddlewaresChain.Count())
+			assert.Equal(t, middleware, server.MiddlewaresChain.GetMiddleware(0))
 		})
 
 		t.Run("should ignore nil middleware", func(t *testing.T) {
@@ -192,7 +194,7 @@ func TestServer(t *testing.T) {
 
 			server.Use(nil)
 
-			assert.Empty(t, server.MiddlewaresChain.middlewares)
+			assert.Equal(t, 0, server.MiddlewaresChain.Count())
 		})
 
 		t.Run("should support chaining middleware", func(t *testing.T) {
@@ -202,9 +204,9 @@ func TestServer(t *testing.T) {
 
 			server.Use(middleware1).Use(middleware2)
 
-			assert.Len(t, server.MiddlewaresChain.middlewares, 2)
-			assert.Equal(t, middleware1, server.MiddlewaresChain.middlewares[0])
-			assert.Equal(t, middleware2, server.MiddlewaresChain.middlewares[1])
+			assert.Equal(t, 2, server.MiddlewaresChain.Count())
+			assert.Equal(t, middleware1, server.MiddlewaresChain.GetMiddleware(0))
+			assert.Equal(t, middleware2, server.MiddlewaresChain.GetMiddleware(1))
 		})
 	})
 
@@ -245,25 +247,24 @@ func TestServer(t *testing.T) {
 			assert.Equal(t, http.StatusServiceUnavailable, res.Code)
 		})
 
-
 		t.Run("should handle client disconnection during body read", func(t *testing.T) {
 			server := NewServer()
-			
+
 			// Create a request with a body that will fail to read
 			req := httptest.NewRequest("POST", "http://example.com", nil)
 			req.Host = "example.com"
 			req.RemoteAddr = "127.0.0.1:8080"
-			
+
 			// Create a mock body that simulates client disconnection
 			req.Body = io.NopCloser(&mockDisconnectingBody{})
-			
+
 			res := httptest.NewRecorder()
-			
+
 			// This should handle the disconnection gracefully
 			server.HandleRequest(res, req)
-			
+
 			// Should not return an error status, just handle gracefully
-			assert.NotEqual(t, http.StatusInternalServerError, res.Code)
+			assert.NotEqual(t, StatusInternalError, res.Code)
 		})
 	})
 
@@ -273,7 +274,7 @@ func TestServer(t *testing.T) {
 
 		t.Run("should return server start time", func(t *testing.T) {
 			server := NewServer()
-			startTime := server.StartTime()
+			startTime := server.StartTime
 
 			assert.NotZero(t, startTime)
 			assert.True(t, time.Since(startTime) < time.Second)
@@ -281,7 +282,7 @@ func TestServer(t *testing.T) {
 
 		t.Run("should return server ID", func(t *testing.T) {
 			server := NewServer()
-			serverId := server.ServerId()
+			serverId := server.ServerId
 
 			assert.NotEmpty(t, serverId)
 		})
@@ -293,16 +294,14 @@ func TestServer(t *testing.T) {
 
 		t.Run("should generate self-signed certificate", func(t *testing.T) {
 			server := NewServer()
-			server.certFile = filepath.Join("/tmp/certs", "cert.pem")
-			server.keyFile = filepath.Join("/tmp/certs", "key.pem")
-			server.caFile = filepath.Join("/tmp/certs", "ca.pem")
-
+			// We can't set private fields directly, so we'll test the default values
+			// The certificate generation will use the default paths
 			server.generateSelfSignedCert()
 
-			// Verify certificate files were created
-			_, err := os.Stat(server.certFile)
+			// Verify certificate files were created in default location
+			_, err := os.Stat(server.CertFile)
 			assert.NoError(t, err)
-			_, err = os.Stat(server.keyFile)
+			_, err = os.Stat(server.KeyFile)
 			assert.NoError(t, err)
 
 			// Verify certificate can be loaded
@@ -313,10 +312,6 @@ func TestServer(t *testing.T) {
 
 		t.Run("should load existing certificate", func(t *testing.T) {
 			server := NewServer()
-			server.certFile = filepath.Join("/tmp/certs", "cert.pem")
-			server.keyFile = filepath.Join("/tmp/certs", "key.pem")
-			server.caFile = filepath.Join("/tmp/certs", "ca.pem")
-
 			// Generate certificate first
 			server.generateSelfSignedCert()
 
@@ -329,24 +324,9 @@ func TestServer(t *testing.T) {
 }
 
 // Mock types for testing client disconnection scenarios
-
 type mockDisconnectingBody struct{}
 
 func (m *mockDisconnectingBody) Read(p []byte) (n int, err error) {
 	// Simulate client disconnection by returning a connection error
 	return 0, fmt.Errorf("connection reset by peer")
-}
-
-type mockErrorBody struct{}
-
-func (m *mockErrorBody) Read(p []byte) (n int, err error) {
-	// Simulate a real error (not client disconnection)
-	return 0, fmt.Errorf("disk full")
-}
-
-type mockConnectionError struct{}
-
-func (m *mockConnectionError) Read(p []byte) (n int, err error) {
-	// Simulate various connection-related errors
-	return 0, fmt.Errorf("broken pipe")
 }

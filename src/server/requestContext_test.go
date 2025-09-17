@@ -70,7 +70,7 @@ func TestRequestContext(t *testing.T) {
 			serverResp := NewResponse()
 
 			ctx := NewRequestContext(serverReq, serverResp, nil)
-			ctx.Error("HTML error message", http.StatusInternalServerError)
+			ctx.Error("HTML error message", StatusInternalError)
 
 			assert.Contains(t, string(ctx.Response.Body), "<html")
 			assert.Contains(t, string(ctx.Response.Body), "HTML error message")
@@ -87,7 +87,7 @@ func TestRequestContext(t *testing.T) {
 			serverResp := NewResponse()
 
 			ctx := NewRequestContext(serverReq, serverResp, nil)
-			ctx.Error("JSON error message", http.StatusInternalServerError)
+			ctx.Error("JSON error message", StatusInternalError)
 
 			assert.True(t, strings.HasPrefix(string(ctx.Response.Body), "{"))
 			assert.Contains(t, string(ctx.Response.Body), "JSON error message")

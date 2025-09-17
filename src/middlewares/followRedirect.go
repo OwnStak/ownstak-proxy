@@ -12,6 +12,7 @@ import (
 
 // FollowRedirectMiddleware allows to proxy requests to any HTTP/HTTPS server
 type FollowRedirectMiddleware struct {
+	server.DefaultMiddleware
 	maxRedirects int
 	client       *http.Client
 }
@@ -38,15 +39,9 @@ func NewFollowRedirectMiddleware() *FollowRedirectMiddleware {
 	}
 }
 
-// OnRequest checks for an existing X-Request-ID header and generates a new one if missing
-func (m *FollowRedirectMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
-	// Nothing to do in request phase
-	next()
-}
-
 func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next func()) {
 	redirectURL := ctx.Response.Headers.Get(server.HeaderLocation)
-	followRedirectHeader := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)		
+	followRedirectHeader := ctx.Response.Headers.Get(server.HeaderXOwnFollowRedirect)
 	followRedirect := followRedirectHeader == "true" || followRedirectHeader == "1"
 
 	mergeStatusHeader := ctx.Response.Headers.Get(server.HeaderXOwnMergeStatus)
@@ -55,7 +50,7 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	mergeHeadersHeader := ctx.Response.Headers.Get(server.HeaderXOwnMergeHeaders)
 	mergeHeaders := mergeHeadersHeader == "true" || mergeHeadersHeader == "1"
 
-	// If response is not a redirect or X-Follow-Redirect header is false, 
+	// If response is not a redirect or X-Follow-Redirect header is false,
 	// continue to next middleware
 	if redirectURL == "" || !followRedirect {
 		next()
@@ -95,7 +90,7 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	req, err := http.NewRequest(ctx.Request.Method, redirectURL, nil)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Failed to create request for redirect to '%s': %v", redirectURL, err)
-		ctx.Error(errorMessage, http.StatusInternalServerError)
+		ctx.Error(errorMessage, server.StatusInternalError)
 		return
 	}
 
@@ -110,7 +105,7 @@ func (m *FollowRedirectMiddleware) OnResponse(ctx *server.RequestContext, next f
 	resp, err := m.client.Do(req)
 	if err != nil {
 		errorMessage := fmt.Sprintf("Failed to follow redirect to '%s': %v", redirectURL, err)
-		ctx.Error(errorMessage, http.StatusInternalServerError)
+		ctx.Error(errorMessage, server.StatusInternalError)
 		return
 	}
 	defer resp.Body.Close()

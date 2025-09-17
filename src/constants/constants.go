@@ -30,8 +30,9 @@ const (
 	EnvReqIdleTimeout       = "REQ_IDLE_TIMEOUT"       // max waiting time for client to send anything
 	EnvReqMaxHeadersSize    = "REQ_MAX_HEADERS_SIZE"   // the max total size of accepted request headers in bytes
 	EnvReqMaxBodySize       = "REQ_MAX_BODY_SIZE"      // the max size of the request body in bytes
-	EnvCacheMaxSize         = "CACHE_MAX_SIZE"         // e.g. 100 for 100MiB
+	EnvMaxMemory            = "MAX_MEMORY"             // max memory in bytes that the proxy server can use
 	EnvLambdaFunctionPrefix = "LAMBDA_FUNCTION_PREFIX" // unique prefix for each cloud backend. e.g. "ownstak-1skda"
+	EnvLambdaStreamingMode  = "LAMBDA_STREAMING_MODE"  // true by default, set to false to invoke lambda in legacy buffered mode
 
 	// Go GC
 	EnvGoMemLimit = "GOMEMLIMIT" // e.g. 1024MiB, heap allocated memory size that Golang garbage collector will try to reach if possible
