@@ -3,7 +3,7 @@ module ownstak-proxy
 go 1.24.2
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.39.0
+	github.com/aws/aws-sdk-go-v2 v1.39.1
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.1
 	github.com/aws/aws-sdk-go-v2/config v1.31.9
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.77.4
