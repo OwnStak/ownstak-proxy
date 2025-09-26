@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Version of sharp-libvips to install
-SHARP_LIBVIPS_VERSION="1.1.0"
+SHARP_LIBVIPS_VERSION="1.2.3"
 
 # Define supported platforms
 PLATFORMS=(

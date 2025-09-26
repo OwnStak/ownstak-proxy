@@ -6,7 +6,7 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
 - [x] AWS Lambda
     - [x] Invocation in BUFFERED mode
     - [x] Invocation in STREAMING mode
-    - [x] Basic error handling for Lambda functions
+    - [x] Error handling for Lambda functions
 - [x] Following redirects to another hosts (S3, etc...)
 - [x] Image Optimization
 - [x] Response streaming
@@ -17,8 +17,9 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
     - [x] HTTP/2.0
     - [ ] HTTP/3.0 
 - [ ] Caching
-- [ ] Basic logging
-- [ ] Basic metrics
+- [x] Error logs
+- [ ] Access logs
+- [ ] Metrics
 
 ## Internal endpoints
 All internal endpoints are prefixed with `/__ownstak__/` to prevent collisions with user-facing routes. Following internal endpoints are available:
@@ -30,6 +31,9 @@ All internal endpoints are prefixed with `/__ownstak__/` to prevent collisions w
 - **GoLang 1.22+**
 - **glib/glibc/libc6-compat** - *Usually it's part of the system. Just minimal Alpine Linux images don't have it.*
 - **NodeJS >= 18.x** - For mocks and E2E tests
+
+## Supported platforms
+- linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
 ## Installation
 ### 1. Clone the repository
@@ -58,9 +62,10 @@ make install
 
 ### 4. Optional: Install libvips for Image Optimizer   
 The libvips is dynamic library needed for the Image Optimizer middleware to work. 
-The lib folder already contains the prebuilt binaries for the most popualr platforms with included all dependencies for webp,jpeg,png...formats. 
+The `lib/` folder already contains the prebuilt binaries for the most popular platforms with included all dependencies for webp, jpeg, png... formats. 
+
 If the pre-built libvips binary from `./lib` doesn't work for you for some reason, you might need to install it manually to your system from the repo. 
-The OwnStak Proxy is also possible to build and use even without libvips. The Image Optimizater middleware will then act as simple proxy and return image unchanged.
+The OwnStak Proxy is also possible to build and use even without libvips. The Image Optimizer middleware will then act as simple proxy and return image unchanged.
 
 You can install it by running:
 
@@ -160,3 +165,6 @@ In a new terminal tab, run:
 ```bash
 go tool pprof -http=: http://localhost:3000/__ownstak__/debug/pprof/heap
 ```
+
+## License
+This project uses prebuilt third-party libraries such as libvips (LGPLv3). See [`lib/LICENSE`](./lib/LICENSE.md) for complete licensing information.
