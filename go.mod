@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.1
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
-	github.com/aws/aws-sdk-go-v2/service/lambda v1.77.5
+	github.com/aws/aws-sdk-go-v2/service/lambda v1.77.6
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.45.3
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.6
 	github.com/ebitengine/purego v0.9.0
