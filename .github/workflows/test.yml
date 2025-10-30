@@ -31,10 +31,10 @@ jobs:
             - name: 'Build cache'
               uses: actions/cache@v4
               with:
-                path: ~/.cache/go-build
+                path: |
+                  ~/go/bin
+                  ~/.cache/go-build
                 key: ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
-                restore-keys: |
-                  ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-
 
             - name: Install Go ${{ env.GO_VERSION }}
               uses: actions/setup-go@v5
