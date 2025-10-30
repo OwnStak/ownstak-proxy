@@ -16,9 +16,8 @@ jobs:
             # write permission is required for autolabeler
             # otherwise, read permission is required at least
             pull-requests: read
-        runs-on: [self-hosted, linux, arm64]
-        container:
-            image: ubuntu:22.04
+        runs-on: ubuntu-slim
+        timeout-minutes: 5
         steps:
             - uses: release-drafter/release-drafter@v6.1.0
               with:
