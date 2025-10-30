@@ -119,6 +119,7 @@ jobs:
         run: ./scripts/version.sh bump
 
       - name: Upload release binaries
+        if: steps.version_tag.outputs.version_tag == 'latest'
         uses: softprops/action-gh-release@v2.2.1
         with:
           files: dist/*
@@ -126,6 +127,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push the new version to the repository
+        if: steps.version_tag.outputs.version_tag == 'latest'
         run: |
           git config --global --add safe.directory $(pwd)
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
