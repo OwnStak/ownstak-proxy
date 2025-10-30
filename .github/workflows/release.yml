@@ -42,7 +42,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: 'Project cache'
+      - name: 'Build cache'
         uses: actions/cache@v4
         with:
           path: |
@@ -110,9 +110,12 @@ jobs:
       - name: Release the docker images
         env:
           DOCKER_BUILDX_CACHE_DIR: /tmp/.buildx-cache
-        run: ./scripts/release.sh
+        run: |
+          mkdir -p "${{ env.DOCKER_BUILDX_CACHE_DIR }}"
+          ./scripts/release.sh
 
-      - name: Bump version for the next release
+      - name: Bump version for the next release (if latest)
+        if: steps.version_tag.outputs.version_tag == 'latest'
         run: ./scripts/version.sh bump
 
       - name: Upload release binaries
