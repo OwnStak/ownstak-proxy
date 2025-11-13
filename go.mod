@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.20
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.80.0
-	github.com/aws/aws-sdk-go-v2/service/organizations v1.45.3
+	github.com/aws/aws-sdk-go-v2/service/organizations v1.46.4
 	github.com/aws/aws-sdk-go-v2/service/sts v1.40.2
 	github.com/ebitengine/purego v0.9.0
 	github.com/google/uuid v1.6.0
