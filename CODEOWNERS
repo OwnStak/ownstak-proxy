@@ -1,0 +1,5 @@
+* @adrien-k @thehansys @KaarelKelk
+
+# Don't automatically assign reviewers for Dependabot MRs.
+go.mod
+go.sum
