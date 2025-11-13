@@ -1,3 +1,5 @@
+![OwnStak Proxy Banner](.github/assets/banner.jpg)
+
 # OwnStak Proxy
 The OwnStak Proxy is a simple proxy server that works as API Gateway replacement for OwnStak with more features and higher limits. 
 It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invoking the Lambda function directly with API Gateway v2 compatible payload.
@@ -17,20 +19,18 @@ It accepts requests on HTTP/HTTPS port and proxies them to AWS Lambda by invokin
     - [x] HTTP/2.0
     - [ ] HTTP/3.0 
 - [ ] Caching
-- [x] Error logs
-- [ ] Access logs
 - [ ] Metrics
 
 ## Internal endpoints
 All internal endpoints are prefixed with `/__ownstak__/` to prevent collisions with user-facing routes. Following internal endpoints are available:
-- `/__ownstak__/health` - Healthcheck middleware endpoint. Returns a 200 OK response when the server is up and running.
-- `/__ownstak__/info` - Returns useful runtime information about the server instance, such as RSS (memory usage), version, platform, etc...
-- `/__ownstak__/image` - Image Optimizer endpoint. Allows to optimize images hosted on the same domain.
+- `/__ownstak__/health` - *Healthcheck middleware endpoint. Returns a 200 OK response when the server is up and running.*
+- `/__ownstak__/info` - *Returns useful runtime information about the server instance, such as RSS (memory usage), version, platform, etc...*
+- `/__ownstak__/image` - *Image Optimizer endpoint. Allows to optimize images hosted on the same domain.*
 
 ## Requirements
-- **GoLang 1.22+**
-- **glib/glibc/libc6-compat** - *Usually it's part of the system. Just minimal Alpine Linux images don't have it.*
-- **NodeJS >= 18.x** - For mocks and E2E tests
+- **GoLang 1.24+**
+- **NodeJS >= 18.x** - *Required for local mocks*
+- **glibc/libc6-compat** - *Required for libvips - Usually it's part of the system but minimal Alpine Linux images don't have it.*
 
 ## Supported platforms
 - linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
@@ -76,7 +76,7 @@ brew install vips
 
 ```bash
 # Ubuntu/Debian based distros
-sudo apt-get install libvips libc6
+sudo apt-get install libvips
 ```
 
 If `./lib` folder is empty for you, you can download binaries by running `./scripts/install-libvips.sh`.
@@ -167,4 +167,4 @@ go tool pprof -http=: http://localhost:3000/__ownstak__/debug/pprof/heap
 ```
 
 ## License
-This project uses prebuilt third-party libraries such as libvips (LGPLv3). See [`lib/LICENSE`](./lib/LICENSE.md) for complete licensing information.
+This project is licensed under the [MIT License](./LICENSE). The project uses prebuilt third-party external libraries such as libvips (LGPLv3). See [`lib/LICENSE`](./lib/LICENSE.md) for complete licensing information.
