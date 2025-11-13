@@ -21,14 +21,14 @@ func NewServerProfilerMiddleware() *ServerProfilerMiddleware {
 
 // OnRequest handles the request phase
 func (m *ServerProfilerMiddleware) OnRequest(ctx *server.RequestContext, next func()) {
-	// Run only in development mode and if the path is /__internal__/debug/pprof/
+	// Run only in development mode and if the path is /__ownstak__/debug/pprof/
 	serverProfilerPath := constants.InternalPathPrefix + "/debug/pprof/"
 	if !strings.HasPrefix(ctx.Request.Path, serverProfilerPath) || constants.Mode != "development" {
 		next()
 		return
 	}
 
-	// Remove the /__internal__ prefix to match pprof's expected paths
+	// Remove the /__ownstak__ prefix to match pprof's expected paths
 	path := strings.TrimPrefix(ctx.Request.Path, constants.InternalPathPrefix)
 
 	// Create a response writer that captures the output

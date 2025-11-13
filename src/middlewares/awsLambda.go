@@ -112,6 +112,7 @@ var (
 	// 8 null bytes indicates the end of response headers part and start of the body in streaming mode.
 	// This special marker cannot appear anywhere in the res headers.
 	// e.g: "\x00\x00\x00\x00\x00\x00\x00\x00"
+	// See: https://github.com/ownstak/ownstak-cli/blob/main/src/compute/serverless/serverless.ts#L35
 	//
 	// NOTE: This could be any sequence that's unlikely to appear in the response headers (can be in the body),
 	// but if we use the same delimiter as AWS Lambda uses for Function URLs,
