@@ -20,7 +20,7 @@ defaults:
 
 jobs:
     format-check:
-        name: Tests & format check
+        name: Tests
         runs-on: ubuntu-slim
         timeout-minutes: 15
         continue-on-error: true
@@ -43,3 +43,6 @@ jobs:
 
             - name: Run tests
               run: ./scripts/test.sh
+
+            - name: Run build
+              run: ./scripts/build.sh

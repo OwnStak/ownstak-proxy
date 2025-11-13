@@ -10,12 +10,6 @@ on:
               required: true
               type: string
               default: 'next'
-env:
-  GO_VERSION: 1.24.3
-  AWS_ACCESS_KEY_ID: ${{ vars.ECR_AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.ECR_AWS_SECRET_ACCESS_KEY }}
-  AWS_REGION: ${{ vars.ECR_AWS_REGION }}
-  DEBIAN_FRONTEND: noninteractive
   
 defaults:
   run:
@@ -25,9 +19,16 @@ jobs:
   release:
     name: Release
     timeout-minutes: 20
+    environment: main
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GO_VERSION: 1.24.3
+      AWS_ACCESS_KEY_ID: ${{ secrets.ECR_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.ECR_AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.ECR_AWS_REGION }}
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Install Basic Dependencies
         run: |
@@ -61,6 +62,25 @@ jobs:
 
       - name: Display Go version
         run: go version
+
+      - name: Display Docker version
+        run: docker --version
+
+      - name: Check that secrets are set
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ]; then
+            echo "AWS_ACCESS_KEY_ID is not set"
+            exit 1
+          fi
+          if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "AWS_SECRET_ACCESS_KEY is not set"
+            exit 1
+          fi
+          if [ -z "$AWS_REGION" ]; then
+            echo "AWS_REGION is not set"
+            exit 1
+          fi
+          echo "✅ Secrets are set"
 
       # - name: Install Docker
       #  run: |
