@@ -3,7 +3,13 @@ name: Release
 on:
   release:
     types: [published]
-
+  workflow_dispatch:
+      inputs:
+          version_tag:
+              description: 'Version tag (e.g., next, latest)'
+              required: true
+              type: string
+              default: 'next'
 env:
   GO_VERSION: 1.24.3
   AWS_ACCESS_KEY_ID: ${{ vars.ECR_AWS_ACCESS_KEY_ID }}
@@ -16,57 +22,57 @@ defaults:
     shell: bash
 
 jobs:
-  release-next:
-    name: Build and release
+  release:
+    name: Release
     timeout-minutes: 20
-    runs-on: [self-hosted, linux, arm64]
-    container:
-      image: ubuntu:22.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Install Basic Dependencies
         run: |
-          apt-get update
-          apt-get install --no-install-recommends -y ca-certificates curl unzip git sudo apt-transport-https gnupg lsb-release
-          update-ca-certificates
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ca-certificates curl unzip git sudo apt-transport-https gnupg lsb-release
+          sudo update-ca-certificates
 
       - uses: actions/checkout@v4
+
+      - name: 'Build cache'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/bin
+            ~/.cache/go-build
+          key: ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
 
       - name: Install Go ${{ env.GO_VERSION }}
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: 'Cache'
+          
+      - name: Docker buildx cache
+        id: docker-cache
         uses: actions/cache@v4
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-buildx-${{ hashFiles('Dockerfile', 'scripts/**') }}
+          restore-keys: |
+            ${{ runner.os }}-docker-buildx-
 
       - name: Display Go version
         run: go version
 
-      - name: Set version from release tag
-        run: |
-          ./scripts/version.sh set ${GITHUB_REF_NAME#v}
-
-      - name: Build the project
-        run: ./scripts/build.sh
-
-      - name: Install Docker
-        run: |
-          curl -fsSL https://get.docker.com -o get-docker.sh
-          sudo sh get-docker.sh
-          docker --version
+      # - name: Install Docker
+      #  run: |
+      #    curl -fsSL https://get.docker.com -o get-docker.sh
+      #    sudo sh get-docker.sh
+      #    docker --version
 
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip > /dev/null 2>&1
-          ./aws/install
+          ./aws/install || ./aws/install --update
           rm -rf aws awscliv2.zip
           aws --version
 
@@ -76,13 +82,43 @@ jobs:
           aws configure set aws_secret_access_key "${{ env.AWS_SECRET_ACCESS_KEY }}" --profile default
           aws configure set aws_region "${{ env.AWS_REGION }}" --profile default
 
-      - name: Release the version
-        run: ./scripts/release.sh
+      - name: Determine version tag
+        id: version_tag
+        run: |
+            if [ "${{ github.event_name }}" == "release" ] || [ "${{ inputs.version_tag }}" == "" ]; then
+                echo "version_tag=latest" >> $GITHUB_OUTPUT
+            else
+                echo "version_tag=${{ inputs.version_tag }}" >> $GITHUB_OUTPUT
+            fi
 
-      - name: Bump version for the next release
+      - name: Set version from release
+        if: steps.version_tag.outputs.version_tag == 'latest'
+        run: ./scripts/version.sh set ${GITHUB_REF_NAME#v}
+
+      - name: Append version tag
+        if: steps.version_tag.outputs.version_tag != 'latest'
+        run: |
+          COMMIT_HASH=$(echo "${{ github.sha }}" | cut -c1-7)
+          VERSION_TAG="${{ steps.version_tag.outputs.version_tag }}"
+          TIMESTAMP=$(date +%s)
+          ./scripts/version.sh tag "${VERSION_TAG}-${COMMIT_HASH}-${TIMESTAMP}" # e.g. 1.0.1-next-a1b2c3d-1744196863
+
+      - name: Build the project
+        run: ./scripts/build.sh
+
+      - name: Release the docker images
+        env:
+          DOCKER_BUILDX_CACHE_DIR: /tmp/.buildx-cache
+        run: |
+          mkdir -p "${{ env.DOCKER_BUILDX_CACHE_DIR }}"
+          ./scripts/release.sh
+
+      - name: Bump version for the next release (if latest)
+        if: steps.version_tag.outputs.version_tag == 'latest'
         run: ./scripts/version.sh bump
 
       - name: Upload release binaries
+        if: steps.version_tag.outputs.version_tag == 'latest'
         uses: softprops/action-gh-release@v2.2.1
         with:
           files: dist/*
@@ -90,6 +126,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push the new version to the repository
+        if: steps.version_tag.outputs.version_tag == 'latest'
         run: |
           git config --global --add safe.directory $(pwd)
           git config --global user.email "github-actions[bot]@users.noreply.github.com"

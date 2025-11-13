@@ -35,6 +35,10 @@ aws --profile default ecr-public get-login-password --region us-east-1 | sudo do
 echo "Releasing $APP_NAME $VERSION Docker images:"
 sudo docker buildx create --use
 
+# Use local build cache if provided via workflow
+CACHE_DIR=${DOCKER_BUILDX_CACHE_DIR:-/tmp/.buildx-cache}
+mkdir -p "$CACHE_DIR"
+
 # Keep only linux based platforms for Docker images
 PLATFORMS_ARRAY=($(echo $PLATFORMS | tr ',' '\n' | grep -E "^linux/"))
 
@@ -47,7 +51,16 @@ for PLATFORM in "${PLATFORMS_ARRAY[@]}"; do
     echo "Releasing Docker image for $PLATFORM..."
     OS=$(echo $PLATFORM | cut -d '/' -f 1)
     ARCH=$(echo $PLATFORM | cut -d '/' -f 2)
-    sudo docker buildx build --build-arg OS=$OS --build-arg ARCH=$ARCH --build-arg DIST_NAME=$DIST_NAME --platform "$PLATFORM" --squash -t $REGISTRY_URL/$DIST_NAME:$VERSION-$ARCH --push . --progress=plain
+    sudo docker buildx build \
+        --build-arg OS=$OS \
+        --build-arg ARCH=$ARCH \
+        --build-arg DIST_NAME=$DIST_NAME \
+        --platform "$PLATFORM" \
+        --squash \
+        --cache-from type=local,src=$CACHE_DIR \
+        --cache-to type=local,dest=$CACHE_DIR,mode=max \
+        -t $REGISTRY_URL/$DIST_NAME:$VERSION-$ARCH \
+        --push . --progress=plain
 done
 
 # Create and push a manifest list for the multi-architecture images with the given version

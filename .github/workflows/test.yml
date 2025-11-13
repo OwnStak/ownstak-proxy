@@ -21,20 +21,18 @@ defaults:
 jobs:
     format-check:
         name: Tests & format check
-        runs-on: [self-hosted, linux, arm64]
+        runs-on: ubuntu-slim
         timeout-minutes: 15
         continue-on-error: true
-        container:
-            image: node:22
         steps:
             - name: Checkout
               uses: actions/checkout@v4
 
-            - name: 'Cache'
+            - name: 'Build cache'
               uses: actions/cache@v4
               with:
                 path: |
-                  ~/go/pkg/mod
+                  ~/go/bin
                   ~/.cache/go-build
                 key: ${{ runner.os }}-build-cache-${{ env.GO_VERSION }}-${{ hashFiles('go.sum') }}
 
