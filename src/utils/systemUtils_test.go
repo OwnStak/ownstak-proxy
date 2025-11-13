@@ -159,28 +159,33 @@ func TestParseMemorySize(t *testing.T) {
 }
 
 func TestGetCgroupUsedMemory(t *testing.T) {
-	// Create a temporary directory for test cgroup files
-	tmpDir := t.TempDir()
-
 	t.Run("success with cgroup v1 format", func(t *testing.T) {
+		tmpDir := t.TempDir()
 		cgroupPath := filepath.Join(tmpDir, "memory.usage_in_bytes")
 		err := os.WriteFile(cgroupPath, []byte("1073741824\n"), 0644)
 		require.NoError(t, err)
 
-		// We can't easily mock the file paths, so we test the error case
-		// when files don't exist (which is expected in non-container environments)
-		_, err = GetCgroupUsedMemory()
-		// This will likely fail in non-container environments, which is expected
-		if err != nil {
-			assert.Contains(t, err.Error(), "no valid cgroup memory usage found")
-		}
+		usage, err := GetCgroupUsedMemory(cgroupPath)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(1073741824), usage)
 	})
 
 	t.Run("error when no cgroup files exist", func(t *testing.T) {
-		// In a non-container environment, this should return an error
-		_, err := GetCgroupUsedMemory()
+		tmpDir := t.TempDir()
+		nonExistentPath := filepath.Join(tmpDir, "nonexistent")
+
+		_, err := GetCgroupUsedMemory(nonExistentPath)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "no valid cgroup memory usage found")
+	})
+
+	t.Run("uses default paths when no paths provided", func(t *testing.T) {
+		// Test with no paths provided - should use default paths
+		_, err := GetCgroupUsedMemory()
+		// May succeed or fail depending on environment, but should not panic
+		if err != nil {
+			assert.Contains(t, err.Error(), "no valid cgroup memory usage found")
+		}
 	})
 }
 
@@ -225,15 +230,7 @@ func TestGetUsedMemory(t *testing.T) {
 }
 
 func TestGetCgroupAvailableMemory(t *testing.T) {
-	t.Run("error when no cgroup files exist", func(t *testing.T) {
-		// In a non-container environment, this should return an error
-		_, err := GetCgroupAvailableMemory()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "no valid cgroup memory limit found")
-	})
-
 	t.Run("handles unlimited memory", func(t *testing.T) {
-		// Create a temporary directory for test cgroup files
 		tmpDir := t.TempDir()
 		cgroupPath := filepath.Join(tmpDir, "memory.limit_in_bytes")
 
@@ -241,11 +238,51 @@ func TestGetCgroupAvailableMemory(t *testing.T) {
 		err := os.WriteFile(cgroupPath, []byte("-1\n"), 0644)
 		require.NoError(t, err)
 
-		// We can't easily inject this into the function without refactoring,
-		// so we just verify the function handles the error case gracefully
-		_, err = GetCgroupAvailableMemory()
-		// This will fail because the path doesn't match the hardcoded paths
+		limit, err := GetCgroupAvailableMemory(cgroupPath)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(0), limit) // 0 indicates unlimited
+	})
+
+	t.Run("handles max value", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		cgroupPath := filepath.Join(tmpDir, "memory.max")
+
+		err := os.WriteFile(cgroupPath, []byte("max\n"), 0644)
+		require.NoError(t, err)
+
+		limit, err := GetCgroupAvailableMemory(cgroupPath)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(0), limit) // 0 indicates unlimited
+	})
+
+	t.Run("parses valid memory limit", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		cgroupPath := filepath.Join(tmpDir, "memory.limit_in_bytes")
+
+		err := os.WriteFile(cgroupPath, []byte("2147483648\n"), 0644)
+		require.NoError(t, err)
+
+		limit, err := GetCgroupAvailableMemory(cgroupPath)
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(2147483648), limit)
+	})
+
+	t.Run("error when no cgroup files exist", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		nonExistentPath := filepath.Join(tmpDir, "nonexistent")
+
+		_, err := GetCgroupAvailableMemory(nonExistentPath)
 		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "no valid cgroup memory limit found")
+	})
+
+	t.Run("uses default paths when no paths provided", func(t *testing.T) {
+		// Test with no paths provided - should use default paths
+		_, err := GetCgroupAvailableMemory()
+		// May succeed or fail depending on environment, but should not panic
+		if err != nil {
+			assert.Contains(t, err.Error(), "no valid cgroup memory limit found")
+		}
 	})
 }
 

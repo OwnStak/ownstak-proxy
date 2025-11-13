@@ -26,12 +26,18 @@ func GetUsedMemory() (uint64, error) {
 }
 
 // GetCgroupCurrentMemory returns the current memory usage from cgroup in bytes
-func GetCgroupUsedMemory() (uint64, error) {
-	// Try different cgroup paths for current memory usage
-	cgroupPaths := []string{
+func GetCgroupUsedMemory(paths ...string) (uint64, error) {
+	// Default cgroup paths for current memory usage
+	defaultPaths := []string{
 		"/sys/fs/cgroup/memory/memory.usage_in_bytes", // cgroup v1
 		"/sys/fs/cgroup/memory.current",               // cgroup v2
 		"/sys/fs/cgroup/memory/memory.usage",          // alternative cgroup v1
+	}
+
+	// Use provided paths if any, otherwise use defaults
+	cgroupPaths := defaultPaths
+	if len(paths) > 0 {
+		cgroupPaths = paths
 	}
 
 	for _, path := range cgroupPaths {
@@ -131,12 +137,18 @@ func GetAvailableMemory() (uint64, error) {
 }
 
 // GetCgroupMaxMemory returns the first cgroup memory limit in bytes from Docker
-func GetCgroupAvailableMemory() (uint64, error) {
-	// Try different cgroup paths for Docker
-	cgroupPaths := []string{
+func GetCgroupAvailableMemory(paths ...string) (uint64, error) {
+	// Default cgroup paths for Docker
+	defaultPaths := []string{
 		"/sys/fs/cgroup/memory/memory.limit_in_bytes",
 		"/sys/fs/cgroup/memory.max",
 		"/sys/fs/cgroup/memory.current",
+	}
+
+	// Use provided paths if any, otherwise use defaults
+	cgroupPaths := defaultPaths
+	if len(paths) > 0 {
+		cgroupPaths = paths
 	}
 
 	for _, path := range cgroupPaths {
